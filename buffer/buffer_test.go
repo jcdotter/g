@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://github.com/jcdotter/grpg/LICENSE
+//     http://github.com/jcdotter/go/LICENSE
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,10 +17,10 @@ package buffer
 import (
 	"testing"
 
-	"github.com/jcdotter/gtest"
+	"github.com/jcdotter/go/test"
 )
 
-var config = &gtest.Config{
+var config = &test.Config{
 	//PrintTest:   true,
 	PrintFail:   true,
 	PrintTrace:  true,
@@ -30,7 +30,7 @@ var config = &gtest.Config{
 }
 
 func TestAll(t *testing.T) {
-	gt := gtest.New(t, config)
+	gt := test.New(t, config)
 
 	var b = New()
 	gt.NotEqual(nil, b, "buffer should not be nil")

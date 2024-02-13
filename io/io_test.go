@@ -12,16 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package crypto
+package io
 
 import (
+	"os"
 	"testing"
 
+	"github.com/jcdotter/go/buffer"
 	"github.com/jcdotter/go/test"
 )
 
 var config = &test.Config{
-	//PrintTest:   true,
+	PrintTest:   false,
 	PrintFail:   true,
 	PrintTrace:  true,
 	PrintDetail: true,
@@ -29,31 +31,25 @@ var config = &test.Config{
 	Msg:         "%s",
 }
 
-func TestKey(t *testing.T) {
+func TestNew(t *testing.T) {
 	gt := test.New(t, config)
-	gt.Msg = "Crypto Key %s"
-	key := NewKey(128)
-	gt.Equal(16, len(key), "Length")
-}
 
-func TestGCM(t *testing.T) {
-	gt := test.New(t, config)
-	gt.Msg = "Crypto GCM %s"
-	key := NewKey(128)
-	gcm, e := NewGCM(key)
-	gt.Equal(nil, e, "Error")
-	gt.NotEqual(nil, gcm, "Value")
-}
+	var out = buffer.Pool.Get()
+	var io = New()
+	gt.NotEqual(nil, io, "io != nil")
+	gt.NotEqual(nil, io.Buffer(), "io buffer != nil")
+	gt.Equal(os.Stdin, io.Out(), "io out == os.Stdin")
 
-func TestEncrypt(t *testing.T) {
-	gt := test.New(t, config)
-	gt.Msg = "Crypto Encrypt %s"
-	key := NewKey(128)
-	text := []byte("hello world!")
-	ciphertext, e := Encrypt(key, text)
-	gt.Equal(nil, e, "Error")
-	gt.NotEqual(nil, ciphertext, "Value")
-	utext, e := Decrypt(key, ciphertext)
-	gt.Equal(nil, e, "Error")
-	gt.Equal(text, utext, "Value")
+	io.SetOut(out)
+	gt.Equal(out, io.Out(), "io out == out")
+
+	data := struct {
+		S1 string
+		S2 string
+	}{"This", "works"}
+	io.AppendString("{{ .S1 }} {{ .S2 }}!")
+	io.Inject(data)
+	io.Output()
+	gt.Equal("This works!", out.String(), "out == 'This works!'")
+
 }
