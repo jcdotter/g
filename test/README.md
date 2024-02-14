@@ -1,7 +1,6 @@
 GOTEST
 ========
-**gotest extends the Stretcher Testify package**\
-(reference https://github.com/stretchr/testify/blob/master/README.md)
+**gotest is a simple test assertion package**\
 
 \
 gotest provides clear readouts of tests performed set by the Configurations:
@@ -37,7 +36,7 @@ import (
 
 func TestYourCode(t *testing.T) {
 
-    gt.Assert.True(t, true, "True is true!")
+    gt.True(t, true, "True is true!")
 
 }
 ```
@@ -96,7 +95,7 @@ go get -u github.com/jcdotter/go/test
 Supported go versions
 ==================
 
-We currently support the most recent major Go versions from 1.19 onward.
+Currently supporting the most recent major Go versions from 1.19 onward.
 
 ------
 

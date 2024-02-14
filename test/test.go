@@ -23,22 +23,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	assert "github.com/stretchr/testify/assert"
-	mock "github.com/stretchr/testify/mock"
-	require "github.com/stretchr/testify/require"
-	suite "github.com/stretchr/testify/suite"
 )
 
 const (
 	VERSION = "0.0.3"
-)
-
-var (
-	Assert  = &assert.Assertions{}
-	Require = &require.Assertions{}
-	Suite   = &suite.Suite{}
-	Mock    = &mock.Mock{}
 	delim   = `.`
 )
 
@@ -88,6 +76,38 @@ func (t *Test) False(actual bool, msgArgs ...any) bool {
 	pass := !actual
 	t.output("False", pass, false, actual, msgArgs)
 	return pass
+}
+
+func (t *Test) Nil(actual any, msgArgs ...any) bool {
+	pass := actual == nil
+	t.output("Nil", pass, nil, actual, msgArgs)
+	return pass
+}
+
+func (t *Test) NotNil(actual any, msgArgs ...any) bool {
+	pass := actual != nil
+	t.output("NotNil", pass, nil, actual, msgArgs)
+	return pass
+}
+
+func (t *Test) Error(err error, msgArgs ...any) bool {
+	pass := err != nil
+	t.output("Error", pass, nil, err, msgArgs)
+	return pass
+}
+
+func (t *Test) NoError(err error, msgArgs ...any) bool {
+	pass := err == nil
+	t.output("NoError", pass, nil, err, msgArgs)
+	return pass
+}
+
+func (t *Test) Fail(msgArgs ...any) {
+	t.output("Fail", false, nil, nil, msgArgs)
+}
+
+func (t *Test) Pass(msgArgs ...any) {
+	t.output("Pass", true, nil, nil, msgArgs)
 }
 
 func (t *Test) output(test string, pass bool, expected any, actual any, msgArgs []any) {
