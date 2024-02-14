@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://github.com/jcdotter/grpg/LICENSE
+//     http://github.com/jcdotter/go/LICENSE
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,22 +15,26 @@
 package errors
 
 import (
+	"fmt"
 	"net/http"
 
+	"github.com/jackc/pgx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	_ "unsafe" // required for go:linkname
 )
 
 // New returns an error with the supplied message.
 func New(message string) error {
-	return &Status{code: 500, msg: message}
+	return &Status{code: 2, msg: message}
 }
 
 // -----------------------------------------------------------------------------
 // STATUS
 
 type Status struct {
-	code uint32
+	code Code
 	msg  string
 }
 
@@ -38,7 +42,7 @@ func (e *Status) Error() string {
 	return e.msg
 }
 
-func (e *Status) Code() uint32 {
+func (e *Status) Code() Code {
 	return e.code
 }
 
@@ -62,30 +66,36 @@ func (e *Status) HttpError(w http.ResponseWriter) {
 	http.Error(w, e.String(), httpCode[e.code])
 }
 
+func (e *Status) HttpCode() int {
+	return httpCode[e.code]
+}
+
 // -----------------------------------------------------------------------------
 // ERROR CODES
 
+type Code uint32
+
 const (
-	OK              uint32 = iota // ok
-	CANCELLED                     // operation cancelled by caller
-	UNKNOWN                       // unknown error
-	INVALID                       // invalid argument from caller
-	DEADLINE                      // operation deadline exceeded
-	NOTFOUND                      // entity not found
-	EXISTS                        // entity already exists
-	PERMISSION                    // permission denied, caller does not have permission
-	EXHAUSTED                     // resource exhausted beyond allowable limit
-	FAILED                        // operation failed preconditions
-	ABORTED                       // operation aborted by the system
-	RANGE                         // operation out of valid range
-	UNIMPLEMENTED                 // operation not implemented or not supported
-	INTERNAL                      // internal system error
-	UNAVAILABLE                   // service unavailable, try again later
-	DATALOSS                      // unrecoverable data loss or corruption
-	UNAUTHENTICATED               // caller is not authenticated
+	OK              Code = iota // ok
+	CANCELLED                   // operation cancelled by caller
+	UNKNOWN                     // unknown error
+	INVALID                     // invalid argument from caller
+	DEADLINE                    // operation deadline exceeded
+	NOTFOUND                    // entity not found
+	EXISTS                      // entity already exists
+	PERMISSION                  // permission denied, caller does not have permission
+	EXHAUSTED                   // resource exhausted beyond allowable limit
+	FAILED                      // operation failed preconditions
+	ABORTED                     // operation aborted by the system
+	RANGE                       // operation out of valid range
+	UNIMPLEMENTED               // operation not implemented or not supported
+	INTERNAL                    // internal system error
+	UNAVAILABLE                 // service unavailable, try again later
+	DATALOSS                    // unrecoverable data loss or corruption
+	UNAUTHENTICATED             // caller is not authenticated
 )
 
-var statusText = map[uint32]string{
+var statusText = map[Code]string{
 	OK:              "OK",
 	CANCELLED:       "CANCELLED",
 	UNKNOWN:         "UNKNOWN",
@@ -105,7 +115,7 @@ var statusText = map[uint32]string{
 	UNAUTHENTICATED: "UNAUTHENTICATED",
 }
 
-var httpCode = map[uint32]int{
+var httpCode = map[Code]int{
 	OK:              http.StatusOK,
 	CANCELLED:       http.StatusRequestTimeout,
 	UNKNOWN:         http.StatusInternalServerError,
@@ -125,8 +135,34 @@ var httpCode = map[uint32]int{
 	UNAUTHENTICATED: http.StatusUnauthorized,
 }
 
-func StatusText(code uint32) string {
-	return statusText[code]
+var postgresCode = map[string]Code{
+	"00":    OK,
+	"01":    ABORTED,
+	"02":    NOTFOUND,
+	"03":    UNAVAILABLE,
+	"08":    UNAVAILABLE,
+	"0A":    UNIMPLEMENTED,
+	"0L":    PERMISSION,
+	"0P":    UNIMPLEMENTED,
+	"20":    INVALID,
+	"21":    EXISTS,
+	"22":    INVALID,
+	"23":    INVALID,
+	"26":    EXISTS,
+	"27":    INTERNAL,
+	"28":    UNAUTHENTICATED,
+	"53":    EXHAUSTED,
+	"54":    EXHAUSTED,
+	"55":    FAILED,
+	"23505": EXISTS,
+	"25P03": DEADLINE,
+	"42501": PERMISSION,
+	"42P01": UNIMPLEMENTED,
+	"57014": CANCELLED,
+}
+
+func (c Code) String() string {
+	return statusText[c]
 }
 
 // -----------------------------------------------------------------------------
@@ -213,6 +249,46 @@ func Unauthenticated(message string) error {
 }
 
 // -----------------------------------------------------------------------------
-// INTERNAL ERROR METHODS
+// DATABASE ERROR METHODS
 
-var ()
+func Postgres(err error, message string) error {
+	if e, ok := err.(*pgx.PgError); ok {
+		message += ": " + e.Detail
+		if code, ok := postgresCode[e.Code]; ok {
+			return &Status{code: code, msg: message}
+		}
+		if code, ok := postgresCode[e.Code[:2]]; ok {
+			return &Status{code: code, msg: message}
+		}
+	}
+	return Internal(message)
+}
+
+// -----------------------------------------------------------------------------
+// MESSAGE FORMATTING
+
+func Msg(format string, a ...any) string {
+	if len(a) == 0 {
+		return format
+	}
+	return fmt.Sprintf(format, a...)
+}
+
+// -----------------------------------------------------------------------------
+// STUBS
+
+//go:noescape
+//go:linkname Unwrap errors.Unwrap
+func Unwrap(err error) error
+
+//go:noescape
+//go:linkname Is errors.Is
+func Is(err, target error) bool
+
+//go:noescape
+//go:linkname As errors.As
+func As(err error, target interface{}) bool
+
+//go:noescape
+//go:linkname Join errors.Join
+func Join(errs ...error) error

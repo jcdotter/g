@@ -9,8 +9,15 @@ require (
 )
 
 require (
+	github.com/pkg/errors v0.9.1 // indirect
+	golang.org/x/crypto v0.19.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
+)
+
+require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
+	github.com/jackc/pgx v3.6.2+incompatible
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/stretchr/objx v0.5.0 // indirect
 	golang.org/x/sys v0.17.0 // indirect
