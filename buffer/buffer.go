@@ -16,6 +16,7 @@ package buffer
 
 import (
 	"errors"
+	"io"
 	"strconv"
 	"sync"
 	"unsafe"
@@ -184,6 +185,16 @@ func (b *Buffer) WriteStrings(strings ...string) (int, error) {
 		l += len(s)
 	}
 	return l, nil
+}
+
+// ReadFrom writes the given reader to the Buffer's byte slice.
+func (b *Buffer) ReadFrom(r io.Reader) (int64, error) {
+	bytes, err := io.ReadAll(r)
+	if err != nil {
+		return 0, err
+	}
+	i, err := b.Write(bytes)
+	return int64(i), err
 }
 
 // Prepend prepends the given bytes to the Buffer's byte slice.
