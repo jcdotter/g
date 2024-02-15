@@ -32,7 +32,6 @@ var (
 
 // --------------------------------------------------------------------------- /
 // Buffer Pool
-// --------------------------------------------------------------------------- /
 
 // Pool is a type-safe wrapper around a sync.Pool
 // that provides a pool of Buffers.
@@ -67,7 +66,6 @@ func (p *bufferPool) Put(b *Buffer) {
 
 // --------------------------------------------------------------------------- /
 // Buffer
-// --------------------------------------------------------------------------- /
 
 // Buffer is a type-safe wrapper around a byte slice.
 type Buffer struct {
@@ -101,7 +99,6 @@ func (b *Buffer) Grow() *Buffer {
 
 // --------------------------------------------------------------------------- /
 // Write methods
-// --------------------------------------------------------------------------- /
 
 // Set sets the Buffer's byte slice.
 func (b *Buffer) Set(bytes []byte) (int, error) {
@@ -285,7 +282,6 @@ func (b *Buffer) Backspace(index, length int) (int, error) {
 
 // --------------------------------------------------------------------------- /
 // Must write methods
-// --------------------------------------------------------------------------- /
 
 // MustSet sets the Buffer's byte slice
 // and panics if an error occurs.
@@ -415,7 +411,6 @@ func (b *Buffer) MustBackspace(index, length int) *Buffer {
 
 // --------------------------------------------------------------------------- /
 // Read methods
-// --------------------------------------------------------------------------- /
 
 // Read reads from the Buffer's byte slice into the given bytes.
 func (b *Buffer) Read(bytes []byte) (int, error) {
@@ -429,7 +424,6 @@ func (b *Buffer) Read(bytes []byte) (int, error) {
 
 // --------------------------------------------------------------------------- /
 // Must read methods
-// --------------------------------------------------------------------------- /
 
 // MustRead reads from the Buffer's byte slice into the given bytes
 // and panics if an error occurs.
@@ -512,7 +506,6 @@ func (b *Buffer) Runes() []rune {
 
 // --------------------------------------------------------------------------- /
 // Rune methods
-// --------------------------------------------------------------------------- /
 
 // RuneIndex returns the byte index and byte len of rune i in the Buffer's byte slice.
 // If i exceeds the Buffer's length, the Buffer's length is returned. If i is negative,
@@ -587,7 +580,6 @@ func RangeRunes(bytes []byte, runeIndex, runesLen int) (byteIndex int, bytesLen 
 
 // --------------------------------------------------------------------------- /
 // Helps
-// --------------------------------------------------------------------------- /
 
 // Must panics if the given error is not nil.
 func Must(_ int, err error) {
