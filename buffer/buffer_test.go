@@ -17,7 +17,7 @@ package buffer
 import (
 	"testing"
 
-	"github.com/jcdotter/go/buffer/test"
+	"github.com/jcdotter/go/test"
 )
 
 var config = &test.Config{

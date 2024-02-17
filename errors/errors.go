@@ -18,57 +18,12 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/jackc/pgx"
+	// required for go:linkname
+	_ "unsafe"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	_ "unsafe" // required for go:linkname
 )
-
-// New returns an error with the supplied message.
-func New(message string) error {
-	return &Status{code: 2, msg: message}
-}
-
-// -----------------------------------------------------------------------------
-// STATUS
-
-type Status struct {
-	code Code
-	msg  string
-}
-
-func (e *Status) Error() string {
-	return e.msg
-}
-
-func (e *Status) Code() Code {
-	return e.code
-}
-
-func (e *Status) Status() string {
-	return statusText[e.code]
-}
-
-func (e *Status) String() string {
-	return e.Status() + ": " + e.msg
-}
-
-func (e *Status) GprcError() error {
-	return status.Error(codes.Code(e.code), e.msg)
-}
-
-func (e *Status) GprcStatus() *status.Status {
-	return status.New(codes.Code(e.code), e.msg)
-}
-
-func (e *Status) HttpError(w http.ResponseWriter) {
-	http.Error(w, e.String(), httpCode[e.code])
-}
-
-func (e *Status) HttpCode() int {
-	return httpCode[e.code]
-}
 
 // -----------------------------------------------------------------------------
 // ERROR CODES
@@ -165,8 +120,25 @@ func (c Code) String() string {
 	return statusText[c]
 }
 
+func (c Code) Error() string {
+	return c.String()
+}
+
+func (c Code) Http() int {
+	return httpCode[c]
+}
+
+func (c Code) Grpc() codes.Code {
+	return codes.Code(c)
+}
+
 // -----------------------------------------------------------------------------
 // SERVER ERROR METHODS
+
+// New returns an error with the supplied message.
+func New(message string) error {
+	return &Status{code: 2, msg: message}
+}
 
 // Cancelled returns an error representing the cancellation of an operation.
 func Cancelled(message string) error {
@@ -249,24 +221,88 @@ func Unauthenticated(message string) error {
 }
 
 // -----------------------------------------------------------------------------
-// DATABASE ERROR METHODS
+// STATUS
 
-func Postgres(err error, message string) error {
-	if e, ok := err.(*pgx.PgError); ok {
-		message += ": " + e.Detail
-		if code, ok := postgresCode[e.Code]; ok {
-			return &Status{code: code, msg: message}
-		}
-		if code, ok := postgresCode[e.Code[:2]]; ok {
-			return &Status{code: code, msg: message}
-		}
+// Status represents the error status and details.
+type Status struct {
+	code Code
+	msg  string
+}
+
+// NewStatus returns a new status with the supplied code and message.
+func NewStatus(code Code, message string) *Status {
+	return &Status{code: code, msg: message}
+}
+
+// Error returns the error message.
+func (e *Status) Error() string {
+	return e.msg
+}
+
+// Code returns the status code.
+func (e *Status) Code() Code {
+	return e.code
+}
+
+// Status returns the status code text.
+func (e *Status) Status() string {
+	return statusText[e.code]
+}
+
+// String returns the status code and message.
+func (e *Status) String() string {
+	return e.Status() + ": " + e.msg
+}
+
+// -----------------------------------------------------------------------------
+// CONVERSION METHODS
+
+// HttpErr executes the status as an HTTP error,
+// writing the status code and message to the response.
+func (e *Status) HttpErr(w http.ResponseWriter) {
+	http.Error(w, e.String(), httpCode[e.code])
+}
+
+// GprcErr returns the status as a gRPC error.
+func (e *Status) GprcErr() error {
+	return status.Error(codes.Code(e.code), e.msg)
+}
+
+// HttpCode returns the status as the corresponding HTTP status code.
+func (e *Status) HttpCode() int {
+	return e.Code().Http()
+}
+
+// GrpcCode returns the status as the corresponding gRPC status code.
+func (e *Status) GrpcCode() codes.Code {
+	return e.Code().Grpc()
+}
+
+// -----------------------------------------------------------------------------
+// DATABASE ERRORS
+
+type SqlError interface {
+	Error() string
+	SqlState() string
+}
+
+// Postgres returns a status representing a PostgreSQL error.
+// See https://pkg.go.dev/github.com/jackc/pgconn#PgError
+// for more information on the SqlError interface.
+func Postgres(err SqlError, message string) error {
+	if code, ok := postgresCode[err.SqlState()]; ok {
+		return &Status{code: code, msg: message}
 	}
-	return Internal(message)
+	if code, ok := postgresCode[err.SqlState()[:2]]; ok {
+		return &Status{code: code, msg: message}
+	}
+	return Internal(message + " " + err.Error())
 }
 
 // -----------------------------------------------------------------------------
 // MESSAGE FORMATTING
 
+// Msg returns a formatted message.
 func Msg(format string, a ...any) string {
 	if len(a) == 0 {
 		return format

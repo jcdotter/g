@@ -50,7 +50,7 @@ func updateModFile(bytes []byte, vpos, vlen int, version string) (err error) {
 	return os.WriteFile(file, bytes, 0644)
 }
 
-// parseMod parses the module name and version from the bytes
+// search returns the index of the byte provided in the bytes
 // provided from the go.mod file.
 func search(b byte, in []byte, at int) (i int) {
 	i = at
