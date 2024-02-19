@@ -14,6 +14,8 @@
 
 package parser
 
+import "strconv"
+
 type Parser struct {
 	b []byte // buffer
 	c int    // cursor
@@ -106,11 +108,13 @@ func isChar(b byte) bool      { return b > 0x20 && b < 0x7e }
 func isNum(b byte) bool       { return b > 0x29 && b < 0x3a }
 func isAlpha(b byte) bool     { return (b > 0x40 && b < 0x5b) || (b > 0x60 && b < 0x7b) }
 func isAlphamNum(b byte) bool { return isAlpha(b) || isNum(b) }
+func isQuote(b byte) bool     { return b == 0x22 || b == 0x27 || b == 0x60 }
 
 func IsChar(in []byte, at int) bool      { return isChar(in[at]) }
 func IsNum(in []byte, at int) bool       { return isNum(in[at]) }
 func IsAlpha(in []byte, at int) bool     { return isAlpha(in[at]) }
 func IsAlphamNum(in []byte, at int) bool { return isAlphamNum(in[at]) }
+func IsQuote(in []byte, at int) bool     { return isQuote(in[at]) }
 
 func Exists(item, in []byte, at int) bool {
 	return canExist(item, in, at) &&
@@ -144,8 +148,8 @@ func Find(b byte, in []byte, at int) int {
 	return -1
 }
 
-func String(in []byte, at int) (s []byte, end int) {
-	if q := in[at]; q == '"' || q == '\'' || q == '`' {
+func StringLit(in []byte, at int) (s []byte, end int) {
+	if q := in[at]; isQuote(q) {
 		for i := at; i < len(in); i++ {
 			if in[i] == q && in[i-1] != '\\' {
 				i++
@@ -184,3 +188,30 @@ func Number(in []byte, at int) (n []byte, end int) {
 
 func Boolean() {}
 func Null()    {}
+
+// ----------------------------------------------------------------------------
+// CONVERSIONS
+
+func String(s []byte) string {
+	if len(s) == 0 {
+		return ""
+	}
+	if q := s[0]; isQuote(q) && q == s[len(s)-1] {
+		return string(s[1 : len(s)-1])
+	}
+	return string(s)
+}
+
+func Int(s []byte) int {
+	if n, err := strconv.Atoi(string(s)); err == nil {
+		return n
+	}
+	return 0
+}
+
+func Float(s []byte) float64 {
+	if n, err := strconv.ParseFloat(string(s), 64); err == nil {
+		return n
+	}
+	return 0
+}

@@ -60,8 +60,7 @@ func (f *Frame) config() {
 			if n.PC == 0 {
 				panic("cannot configure frame, no such frame")
 			}
-			f.
-				frame = &n
+			f.frame = &n
 		}
 	}
 }

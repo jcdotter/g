@@ -16,7 +16,6 @@ package test
 
 import (
 	"fmt"
-	"log"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -25,10 +24,8 @@ import (
 	"testing"
 )
 
-const (
-	VERSION = "0.0.3"
-	delim   = `.`
-)
+// ----------------------------------------------------------------------------
+// TEST
 
 type Test struct {
 	*sync.Mutex
@@ -115,8 +112,7 @@ func (t *Test) output(test string, pass bool, expected any, actual any, msgArgs 
 	msg := ""
 	if t.willPrint {
 		if t.PrintTest || (t.PrintFail && !pass) {
-			msg = t.buildMsg(test, pass, expected, actual, msgArgs)
-			log.Print(msg)
+			t.t.Log(Msg(t.cnt, test, pass, expected, actual, t.PrintTrace, t.PrintDetail, t.Msg, msgArgs...))
 		}
 	}
 	t.cnt++
@@ -131,37 +127,94 @@ func (t *Test) output(test string, pass bool, expected any, actual any, msgArgs 
 	t.Unlock()
 }
 
-func (t *Test) buildMsg(test string, pass bool, expected any, actual any, msgArgs []any) string {
-	msg := "\n#" + strconv.Itoa(t.cnt) + " test '" + test + "' "
-	if pass {
-		msg += "succeeded: "
+// ----------------------------------------------------------------------------
+// LIBRARY
+
+func Assert(t *testing.T, actual, expected any, msg ...any) {
+	if actual != expected {
+		t.Errorf(Msg(-1, "", false, expected, actual, true, true, userMsg(msg...)))
 	} else {
-		msg += "failed: "
+		t.Logf(Msg(-1, "", true, expected, actual, true, true, userMsg(msg...)))
 	}
-	if t.Msg != "" {
-		msg += fmt.Sprintf(t.Msg+"\n", msgArgs...)
-	}
-	if t.PrintTrace {
-		msg += "  src:\t\t" + trace(3) + "\n"
-	}
-	if t.PrintDetail {
-		format := "\t%#[1]v\n"
-		msg += "  expected:" + fmt.Sprintf(format, expected)
-		msg += "  actual:" + fmt.Sprintf(format, actual)
-	}
-	return msg
 }
 
-func trace(i int) string {
-	pc, fl, ln, ok := runtime.Caller(int(i + 1))
-	if ok {
-		fs := strings.Split(fl, `/`)
-		gf := strings.Split(fs[len(fs)-1], delim)[0]
-		fn := strings.Split(runtime.FuncForPC(pc).Name(), delim)
-		pt := strings.Replace(fn[0], `/`, delim, -1)
-		s := []string{pt, gf}
-		s = append(s, fn[1:]...)
-		return strings.Join(s, delim) + ` line ` + fmt.Sprint(ln)
+func Require(t *testing.T, actual, expected any, msg ...any) {
+	if actual != expected {
+		t.Fatalf(Msg(-1, "", false, expected, actual, true, true, userMsg(msg...)))
+	} else {
+		t.Logf(Msg(-1, "", true, expected, actual, true, true, userMsg(msg...)))
+	}
+}
+
+func userMsg(msg ...any) (s string) {
+	if len(msg) > 0 {
+		s = msg[0].(string)
+	}
+	if len(msg) > 1 {
+		s = fmt.Sprintf(s, msg[1:]...)
+	}
+	return
+}
+
+func Msg(num int, test string, pass bool, expected any, actual any, trace, detail bool, msg string, args ...any) string {
+	m := strings.Builder{}
+	m.Grow(256)
+	m.WriteByte('\n')
+	if num > 0 {
+		m.WriteString("#")
+		m.WriteString(strconv.Itoa(num))
+		m.WriteByte(' ')
+	}
+	if pass {
+		m.WriteString("PASS: ")
+	} else {
+		m.WriteString("FAIL: ")
+	}
+	if test != "" {
+		m.WriteString("test '")
+		m.WriteString(test)
+		m.WriteString("'. ")
+	}
+	if msg != "" {
+		m.WriteString(fmt.Sprintf(msg, args...))
+	}
+	m.WriteByte('\n')
+	if trace {
+		m.WriteString("  src:\t\t")
+		m.WriteString(Trace(3))
+		m.WriteByte('\n')
+	}
+	if detail {
+		format := "\t%#[1]v\n"
+		m.WriteString("  expected:")
+		m.WriteString(fmt.Sprintf(format, expected))
+		m.WriteString("  actual:")
+		m.WriteString(fmt.Sprintf(format, actual))
+		m.WriteByte('\n')
+	}
+	return m.String()
+}
+
+func Trace(skip int) string {
+	pc := make([]uintptr, 1)
+	runtime.Callers(skip+1, pc)
+	f, _ := runtime.CallersFrames(pc).Next()
+	if f.PC != 0 {
+		s := strings.Builder{}
+		s.Grow(64)
+		// packakge name
+		pkgStart := strings.LastIndex(f.Function, `/`) + 1
+		pkgEnd := strings.Index(f.Function[pkgStart:], `.`) + pkgStart
+		s.WriteString(f.Function[pkgStart:pkgEnd])
+		s.WriteString(`.`)
+		// file name
+		fileStart := strings.LastIndex(f.File, `/`) + 1
+		fileEnd := strings.LastIndex(f.File, `.`)
+		s.WriteString(f.File[fileStart:fileEnd])
+		// file line
+		s.WriteString(` line `)
+		s.WriteString(strconv.Itoa(f.Line))
+		return s.String()
 	}
 	return `unknown.source`
 }
