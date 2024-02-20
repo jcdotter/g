@@ -25,15 +25,6 @@ import (
 	"github.com/jcdotter/go/test"
 )
 
-var config = &test.Config{
-	//PrintTest:   true,
-	PrintFail:   true,
-	PrintTrace:  true,
-	PrintDetail: true,
-	FailFatal:   true,
-	Msg:         "%s",
-}
-
 func TestCli(t *testing.T) {
 	fmt.Println(Msg(Standard("GRPG")).Styl(HiCyan))
 	/* c := New()
@@ -51,7 +42,7 @@ func TestCli(t *testing.T) {
 }
 
 func TestStyle(t *testing.T) {
-	gt := test.New(t, config)
+	gt := test.New(t)
 	gt.Msg = "Styles.%s"
 	s := Styl(Bold, Underline, HiWhite)
 	gt.Equal(3, s.Len(), "Len")
@@ -61,7 +52,7 @@ func TestStyle(t *testing.T) {
 }
 
 func TestMessage(t *testing.T) {
-	gt := test.New(t, config)
+	gt := test.New(t)
 	var exp []byte
 	var res *Message
 
@@ -90,7 +81,7 @@ func TestMessage(t *testing.T) {
 }
 
 func TestCursor(t *testing.T) {
-	gt := test.New(t, config)
+	gt := test.New(t)
 	gt.Msg = "Cursor.%s"
 
 	// Test Cursor Movements
@@ -132,7 +123,7 @@ func TestCursor(t *testing.T) {
 }
 
 func TestWrite(t *testing.T) {
-	gt := test.New(t, config)
+	gt := test.New(t)
 
 	gt.Msg = "Message.Write.%s"
 	exp := []byte("\x1b[0mTest message...\x1b[0m")
@@ -175,7 +166,7 @@ func TestWrite(t *testing.T) {
 }
 
 func TestOptions(t *testing.T) {
-	gt := test.New(t, config)
+	gt := test.New(t)
 	opts := []string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}
 	opt := NewOptions(opts, false)
 	opt.Hovered = 5
@@ -218,7 +209,7 @@ func TestOptions(t *testing.T) {
 }
 
 func TestPrompt(t *testing.T) {
-	gt := test.New(t, config)
+	gt := test.New(t)
 	gt.Msg = "Prompt.%s"
 	var res any
 	var err error
@@ -252,7 +243,7 @@ func TestPrompt(t *testing.T) {
 }
 
 func TestFlag(t *testing.T) {
-	gt := test.New(t, config)
+	gt := test.New(t)
 
 	// Test Flag
 	gt.Msg = "Flag.%s"
@@ -319,8 +310,8 @@ func TestFlag(t *testing.T) {
 }
 
 func TestCommand(t *testing.T) {
-	gt := test.New(t, config)
-	gt.PrintTest = true
+	gt := test.New(t)
+	gt.Print = true
 
 	// Setup test
 	name := "test"

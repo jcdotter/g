@@ -23,12 +23,10 @@ import (
 )
 
 var config = &test.Config{
-	PrintTest:   false,
-	PrintFail:   true,
-	PrintTrace:  true,
-	PrintDetail: true,
-	FailFatal:   true,
-	Msg:         "%s",
+	Trace:   true,
+	Detail:  true,
+	Require: true,
+	Msg:     "%s",
 }
 
 func TestNew(t *testing.T) {

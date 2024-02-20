@@ -22,12 +22,10 @@ import (
 )
 
 var config = &test.Config{
-	PrintTest:   true,
-	PrintFail:   true,
-	PrintTrace:  true,
-	PrintDetail: true,
-	FailFatal:   true,
-	Msg:         "%s",
+	Trace:   true,
+	Detail:  true,
+	Require: true,
+	Msg:     "%s",
 }
 
 type Entities []*Entity

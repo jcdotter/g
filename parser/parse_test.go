@@ -23,9 +23,18 @@ import (
 func TestNum(t *testing.T) {
 	var n []byte
 	n, _ = Number([]byte("123 "), 0)
-	test.Assert(t, Int(n), 123, "parse int")
+	test.Print(t, Int(n), 123, "parse int")
 	n, _ = Number([]byte("123.456 "), 0)
-	test.Assert(t, Float(n), 123.456, "parse float")
+	test.Print(t, Float(n), 123.456, "parse float")
 	n, _ = Number([]byte("123.456e-2 "), 0)
-	test.Assert(t, Float(n), 1.23456, "parse float")
+	test.Print(t, Float(n), 1.23456, "parse exponent")
 }
+
+/* func TestString(t *testing.T) {
+	var b []byte
+	var s string
+	b, _ = StringLit([]byte(`"hello\nworld" `), 0)
+	test.Printr(t, string(b), `"hello"`, "parse string literal")
+	s = String(b)
+	test.Printr(t, s, "hello\nworld", "parse string")
+} */

@@ -40,7 +40,7 @@ type Logger struct {
 
 // New returns a new logger with provided options, if any
 func New() *Logger {
-	return (&Logger{}).Build()
+	return new(Logger).Build()
 }
 
 // Write writes a log message to the logger
@@ -49,6 +49,7 @@ func (l *Logger) write(level Level, msg string, callid string, keyvals ...any) {
 		panic("logger not implemented")
 	}
 	b := buffer.Pool.Get()
+	defer b.Free()
 	b.WriteBytes(l.level(level))
 	b.WriteBytes(l.time())
 	b.WriteBytes(l.service())
@@ -76,8 +77,6 @@ func (l *Logger) write(level Level, msg string, callid string, keyvals ...any) {
 		}
 		wg.Wait()
 	}
-
-	b.Free()
 }
 
 // format formats a log message

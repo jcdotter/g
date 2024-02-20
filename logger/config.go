@@ -17,6 +17,8 @@ package logger
 import (
 	"io"
 	"os"
+
+	"github.com/jcdotter/go/buffer"
 )
 
 var (
@@ -27,23 +29,6 @@ var (
 		LogPackage:   true,
 		LogCaller:    true,
 		LogFunction:  true,
-	}
-	defaultEncoder *Encoder = &Encoder{
-		LevelKey:    "level",
-		TimeKey:     "ts",
-		ServiceKey:  "svc",
-		CallIdKey:   "cid",
-		PackageKey:  "pkg",
-		CallerKey:   "src",
-		FunctionKey: "fn",
-		MessageKey:  "msg",
-		LogStart:    '{',
-		LogEnd:      '}',
-		LogSep:      '\n',
-		ElemSep:     ',',
-		KeyValSep:   ':',
-		Quote:       '"',
-		TimeFmt:     "2006-01-02 15:04:05.000",
 	}
 )
 
@@ -59,42 +44,44 @@ type Config struct {
 	Fields       []*field
 }
 
+func NewConfig() *Config {
+	return &Config{
+		DefaultLevel: defaultConfig.DefaultLevel,
+		LogTime:      defaultConfig.LogTime,
+		LogPackage:   defaultConfig.LogPackage,
+		LogCaller:    defaultConfig.LogCaller,
+		LogFunction:  defaultConfig.LogFunction,
+	}
+}
+
 // Build implements the logger configurations
 func (l *Logger) Build() *Logger {
 	l.Lock()
 	defer l.Unlock()
-	if l.config != nil {
-		if l.config.implemented {
-			return l
-		}
-	}
-	l.config = defaultConfig
-	l.config.implemented = true
-	// build encoder
-	l.encoder = defaultEncoder
-	e := l.encoder
-	e.LevelKeyBuffer = append(append([]byte{e.LogStart, e.Quote}, e.LevelKey...), e.Quote, e.KeyValSep)
-	e.TimeKeyBuffer = e.BufferKey(e.TimeKey)
-	e.ServiceBuffer = e.BufferKeyValString(e.ServiceKey, e.ServiceName)
-	e.CallIdBuffer = e.BufferKey(e.CallIdKey)
-	e.PackageBuffer = e.BufferKey(e.PackageKey)
-	e.CallerBuffer = e.BufferKey(e.CallerKey)
-	e.FunctionBuffer = e.BufferKey(e.FunctionKey)
-	e.MessageBuffer = e.BufferKey(e.MessageKey)
-	e.EndBuffer = []byte{e.LogEnd, e.LogSep}
 
-	// set level log
-	e.BufferLevels()
+	// build config
+	if l.config == nil {
+		l.config = NewConfig()
+	} else if l.config.implemented {
+		return l
+	}
+	l.config.implemented = true
+
+	// build encoder
+	if l.encoder == nil {
+		l.encoder = NewEncoder()
+	}
+	l.encoder.PresetBuffers(l.config)
 
 	// set writer
 	if l.writers == nil {
-		l.writers = []io.Writer{defaultWriter}
+		l.writers = append(make([]io.Writer, 0, 1), defaultWriter)
 	}
 
 	// build clock
 	if l.config.LogTime {
-		l.clock = Clock().Format(e.TimeFmt)
-		e.TimeBuffer = append(e.TimeKeyBuffer, e.BufferBytes(l.clock.cache)...)
+		l.clock = Clock().Format(l.encoder.TimeFmt)
+		l.encoder.BufferBytes(l.encoder.TimeBuffer, l.clock.cache)
 	}
 
 	return l
@@ -255,7 +242,11 @@ func (l *Logger) AddStaticField(name string, value any) *Logger {
 	l.Lock()
 	defer l.Unlock()
 	l.config.LogStatics = true
-	l.encoder.StaticBuffer = append(l.encoder.StaticBuffer, l.encoder.BufferKeyVal(name, value)...)
+	if l.encoder.StaticBuffer == nil {
+		l.encoder.StaticBuffer = buffer.Make(256)
+	}
+	l.encoder.BufferKey(l.encoder.StaticBuffer, l.encoder.ElemSep, name)
+	l.encoder.BufferVal(l.encoder.StaticBuffer, value)
 	return l
 }
 
@@ -272,9 +263,12 @@ func (l *Logger) RemoveStaticFields() *Logger {
 func (l *Logger) AddField(name string, fn func(*Logger) any) *Logger {
 	l.Lock()
 	defer l.Unlock()
+	if l.config.Fields == nil {
+		l.config.Fields = make([]*field, 0, 4)
+	}
 	l.config.Fields = append(l.config.Fields, &field{
 		name: name,
-		pre:  l.encoder.BufferKey(name),
+		pre:  []byte(name),
 		fn:   fn,
 	})
 	return l

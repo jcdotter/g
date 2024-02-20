@@ -73,6 +73,11 @@ type Buffer struct {
 	p *bufferPool
 }
 
+// Make constructs a new Buffer with the given capacity.
+func Make(cap int) *Buffer {
+	return &Buffer{b: make([]byte, 0, cap)}
+}
+
 // New constructs a new Buffer.
 func New() *Buffer {
 	return &Buffer{b: make([]byte, 0, defaultBufferSize)}

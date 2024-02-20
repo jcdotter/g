@@ -21,6 +21,27 @@ import (
 	"github.com/jcdotter/go/stack"
 )
 
+// default encoder settings
+var defaultEncoder *Encoder = &Encoder{
+	LevelKey:    "level",
+	TimeKey:     "ts",
+	ServiceKey:  "svc",
+	CallIdKey:   "cid",
+	PackageKey:  "pkg",
+	CallerKey:   "src",
+	FunctionKey: "fn",
+	MessageKey:  "msg",
+	LogStart:    '{',
+	LogEnd:      '}',
+	LogSep:      '\n',
+	ElemSep:     ',',
+	KeyValSep:   ':',
+	Quote:       '"',
+	TimeFmt:     "2006-01-02 15:04:05.000",
+}
+
+var defBufSize = 24
+
 type Encoder struct {
 	LevelKey       string
 	TimeKey        string
@@ -32,70 +53,142 @@ type Encoder struct {
 	FunctionKey    string
 	MessageKey     string
 	LevelIndex     []uint8
-	LevelKeyBuffer []byte // eg. `{"level":` (every log entry must have a level)
-	LevelBuffer    []byte // eg. `{"level":"info"`
-	TimeKeyBuffer  []byte // eg. `,"ts":`
-	TimeBuffer     []byte // eg. `,"ts":"2006-01-02 15:04:05.000"`
-	ServiceBuffer  []byte // eg. `,"svc":"my-service"` (service name doesn't change)
-	CallIdBuffer   []byte // eg. `,"callid":`
-	PackageBuffer  []byte // eg. `,"pkg":`
-	CallerBuffer   []byte // eg. `,"src":`
-	FunctionBuffer []byte // eg. `,"fn":`
-	StaticBuffer   []byte // eg. `,"key":"value"`
-	MessageBuffer  []byte // eg. `,"msg":`
-	EndBuffer      []byte // eg. `}`
-	LogStart       byte   // eg. `{`
-	LogEnd         byte   // eg. `}`
-	LogSep         byte   // eg. `\n`
-	ElemSep        byte   // eg. `,`
-	KeyValSep      byte   // eg. `:`
-	Quote          byte   // eg. `"`
+	LevelKeyBuffer *buffer.Buffer // eg. `{"level":` (every log entry must have a level)
+	LevelBuffer    *buffer.Buffer // eg. `{"level":"info"`
+	TimeKeyBuffer  *buffer.Buffer // eg. `,"ts":`
+	TimeBuffer     *buffer.Buffer // eg. `,"ts":"2006-01-02 15:04:05.000"`
+	ServiceBuffer  *buffer.Buffer // eg. `,"svc":"my-service"` (service name doesn't change)
+	CallIdBuffer   *buffer.Buffer // eg. `,"callid":`
+	PackageBuffer  *buffer.Buffer // eg. `,"pkg":`
+	CallerBuffer   *buffer.Buffer // eg. `,"src":`
+	FunctionBuffer *buffer.Buffer // eg. `,"fn":`
+	StaticBuffer   *buffer.Buffer // eg. `,"key":"value"`
+	MessageBuffer  *buffer.Buffer // eg. `,"msg":`
+	EndBuffer      []byte         // eg. `}`
+	LogStart       byte           // eg. `{`
+	LogEnd         byte           // eg. `}`
+	LogSep         byte           // eg. `\n`
+	ElemSep        byte           // eg. `,`
+	KeyValSep      byte           // eg. `:`
+	Quote          byte           // eg. `"`
 	TimeFmt        string
 	CallerCache    map[uintptr][]byte
 }
 
-// CreateKey creates a key for the encoder
-func (e *Encoder) BufferKey(key string) []byte {
-	return append(append([]byte{e.ElemSep, e.Quote}, []byte(key)...), e.Quote, e.KeyValSep)
+func NewEncoder() (e *Encoder) {
+	return &Encoder{
+		LevelKey:    defaultEncoder.LevelKey,
+		TimeKey:     defaultEncoder.TimeKey,
+		ServiceKey:  defaultEncoder.ServiceKey,
+		CallIdKey:   defaultEncoder.CallIdKey,
+		PackageKey:  defaultEncoder.PackageKey,
+		CallerKey:   defaultEncoder.CallerKey,
+		FunctionKey: defaultEncoder.FunctionKey,
+		MessageKey:  defaultEncoder.MessageKey,
+		/* LevelKeyBuffer: buffer.Make(defBufSize),
+		LevelBuffer:    buffer.Make(256), */
+		/* TimeKeyBuffer:  buffer.Make(defBufSize),
+		TimeBuffer:     buffer.Make(64),
+		ServiceBuffer:  buffer.Make(defBufSize),
+		CallIdBuffer:   buffer.Make(defBufSize),
+		PackageBuffer:  buffer.Make(defBufSize),
+		CallerBuffer:   buffer.Make(defBufSize),
+		FunctionBuffer: buffer.Make(defBufSize),
+		StaticBuffer:   buffer.Make(defBufSize), */
+		//MessageBuffer: buffer.Make(defBufSize),
+		EndBuffer: []byte{defaultEncoder.LogEnd, defaultEncoder.LogSep},
+		LogStart:  defaultEncoder.LogStart,
+		LogEnd:    defaultEncoder.LogEnd,
+		LogSep:    defaultEncoder.LogSep,
+		ElemSep:   defaultEncoder.ElemSep,
+		KeyValSep: defaultEncoder.KeyValSep,
+		Quote:     defaultEncoder.Quote,
+		TimeFmt:   defaultEncoder.TimeFmt,
+	}
 }
 
-func (e *Encoder) BufferVal(val any) []byte {
+// PresetBuffers pre-sets the encoder buffers
+func (e *Encoder) PresetBuffers(c *Config) {
+	e.PresetBuffer(true, &e.LevelKeyBuffer, defBufSize, e.LogStart, e.LevelKey)
+	e.PresetBuffer(c.LogTime, &e.TimeKeyBuffer, defBufSize, e.ElemSep, e.TimeKey)
+	e.PresetBuffer(c.LogTime, &e.TimeBuffer, 64, e.ElemSep, e.TimeKey)
+	e.PresetBuffer(c.LogService, &e.ServiceBuffer, defBufSize, e.ElemSep, e.ServiceKey)
+	e.PresetBuffer(true, &e.CallIdBuffer, defBufSize, e.ElemSep, e.CallIdKey)
+	e.PresetBuffer(c.LogPackage, &e.PackageBuffer, defBufSize, e.ElemSep, e.PackageKey)
+	e.PresetBuffer(c.LogCaller, &e.CallerBuffer, defBufSize, e.ElemSep, e.CallerKey)
+	e.PresetBuffer(c.LogFunction, &e.FunctionBuffer, defBufSize, e.ElemSep, e.FunctionKey)
+	e.PresetBuffer(true, &e.MessageBuffer, defBufSize, e.ElemSep, e.MessageKey)
+
+	if c.LogService {
+		e.BufferString(e.ServiceBuffer, e.ServiceName)
+	}
+	e.BufferLevels()
+}
+
+func (e *Encoder) PresetBuffer(use bool, b **buffer.Buffer, size int, sep byte, key string) {
+	if use {
+		if *b == nil {
+			*b = buffer.Make(size)
+		} else {
+			(*b).Reset()
+		}
+		e.BufferKey(*b, sep, key)
+	}
+}
+
+// BufferKey writes the provided key to the provided buffer
+// prepended with the provided separator
+func (e *Encoder) BufferKey(b *buffer.Buffer, sep byte, key string) {
+	b.WriteByte(sep)
+	b.WriteByte(e.Quote)
+	b.WriteString(key)
+	b.WriteByte(e.Quote)
+	b.WriteByte(e.KeyValSep)
+}
+
+// BufferVal writes the provided value to the provided buffer
+func (e *Encoder) BufferVal(b *buffer.Buffer, val any) {
 	j, _ := json.Marshal(val)
-	return j
+	b.Write(j)
 }
 
-// BufferString creates a string for the encoder
-func (e *Encoder) BufferString(s string) []byte {
-	return append(append([]byte{e.Quote}, []byte(s)...), e.Quote)
+// BufferString writes the provided non-literal string to
+// the provided buffer as a literal string
+func (e *Encoder) BufferString(b *buffer.Buffer, s string) {
+	b.WriteByte(e.Quote)
+	b.WriteString(s)
+	b.WriteByte(e.Quote)
 }
 
-// BufferBytes creates a byte slice for the encoder
-func (e *Encoder) BufferBytes(b []byte) []byte {
-	return append(append([]byte{e.Quote}, b...), e.Quote)
+// BufferBytes writes the provided bytes to the provided buffer
+func (e *Encoder) BufferBytes(b *buffer.Buffer, s []byte) {
+	b.WriteByte(e.Quote)
+	b.Write(s)
+	b.WriteByte(e.Quote)
 }
 
-// CreateKeyVal creates a key value pair for the encoder
-func (e *Encoder) BufferKeyVal(key string, val any) []byte {
-	return append(e.BufferKey(key), e.BufferVal(val)...)
+// CreateKeyVal writes the provided key and value to the provided buffer
+func (e *Encoder) BufferKeyVal(b *buffer.Buffer, key string, val any) {
+	e.BufferKey(b, e.ElemSep, key)
+	e.BufferVal(b, val)
 }
 
-// BufferKeyValString creates a key value pair for the encoder
-func (e *Encoder) BufferKeyValString(key string, val string) []byte {
-	return append(e.BufferKey(key), e.BufferString(val)...)
+// BufferKeyValString writes the provided key and value to the provided buffer
+func (e *Encoder) BufferKeyValString(b *buffer.Buffer, key string, val string) {
+	e.BufferKey(b, e.ElemSep, key)
+	e.BufferString(b, val)
 }
 
 func (e *Encoder) BufferLevels() {
-	b := buffer.Pool.Get()
-	defer b.Free()
+	e.LevelBuffer = buffer.Make(256)
 	e.LevelIndex = make([]uint8, len(levelNameIndex))
 	for i := 0; i < len(levelNameIndex)-1; i++ {
-		b.WriteBytes(e.LevelKeyBuffer)
-		b.WriteByte(e.Quote)
-		b.WriteString(Level(i).String())
-		b.WriteByte(e.Quote)
-		e.LevelIndex[i+1] = uint8(b.Len())
+		e.LevelBuffer.WriteBytes(e.LevelKeyBuffer.Bytes())
+		e.LevelBuffer.WriteByte(e.Quote)
+		e.LevelBuffer.WriteString(Level(i).String())
+		e.LevelBuffer.WriteByte(e.Quote)
+		e.LevelIndex[i+1] = uint8(e.LevelBuffer.Len())
 	}
-	e.LevelBuffer = b.Bytes()
 }
 
 //------------------------------------------------------------
@@ -120,29 +213,32 @@ func (e encoding) String() string {
 //------------------------------------------------------------
 
 func (l *Logger) level(ll Level) encoding {
-	return l.encoder.LevelBuffer[l.encoder.LevelIndex[ll]:l.encoder.LevelIndex[ll+1]]
+	return l.encoder.LevelBuffer.Bytes()[l.encoder.LevelIndex[ll]:l.encoder.LevelIndex[ll+1]]
 }
 
 func (l *Logger) time() encoding {
 	if l.config.LogTime {
 		if l.clock.refresh() {
-			l.encoder.TimeBuffer = append(l.encoder.TimeKeyBuffer, l.encoder.BufferBytes(l.clock.cache)...)
+			l.encoder.TimeBuffer.Reset()
+			l.encoder.TimeBuffer.Write(l.encoder.TimeKeyBuffer.Bytes())
+			l.encoder.BufferBytes(l.encoder.TimeBuffer, l.clock.cache)
 		}
-		return l.encoder.TimeBuffer
+		return l.encoder.TimeBuffer.Bytes()
 	}
 	return nil
 }
 
 func (l *Logger) service() encoding {
 	if l.config.LogService {
-		return l.encoder.ServiceBuffer
+		return l.encoder.ServiceBuffer.Bytes()
 	}
 	return nil
 }
 
 func (l *Logger) callid(cid string) encoding {
 	if len(cid) > 0 {
-		return append(l.encoder.CallIdBuffer, l.encoder.BufferString(cid)...)
+		l.encoder.BufferString(l.encoder.CallIdBuffer, cid)
+		return l.encoder.CallIdBuffer.Bytes()
 	}
 	return nil
 }
@@ -156,22 +252,22 @@ func (l *Logger) encCaller(skip int) (enc encoding) {
 		var ok bool
 		if enc, ok = l.encoder.CallerCache[caller.PC()]; !ok {
 			b := buffer.Pool.Get()
+			defer b.Free()
 			if l.config.LogPackage {
-				b.WriteBytes(l.encoder.PackageBuffer)
-				b.WriteBytes(l.encoder.BufferString(caller.Pkg().Path))
+				b.WriteBytes(l.encoder.PackageBuffer.Bytes())
+				l.encoder.BufferString(b, caller.Pkg().Path)
 			}
 			if l.config.LogCaller {
-				b.WriteBytes(l.encoder.CallerBuffer)
-				cb := buffer.Pool.Get()
-				defer cb.Free()
-				cb.WriteString(caller.File().Name)
-				cb.WriteByte(':')
-				cb.WriteInt(caller.Line())
-				b.WriteBytes(l.encoder.BufferBytes(cb.Bytes()))
+				b.WriteBytes(l.encoder.CallerBuffer.Bytes())
+				b.WriteByte(l.encoder.Quote)
+				b.WriteString(caller.File().Name)
+				b.WriteByte(':')
+				b.WriteInt(caller.Line())
+				b.WriteByte(l.encoder.Quote)
 			}
 			if l.config.LogFunction {
-				b.WriteBytes(l.encoder.FunctionBuffer)
-				b.WriteBytes(l.encoder.BufferString(caller.Func().Name))
+				b.WriteBytes(l.encoder.FunctionBuffer.Bytes())
+				l.encoder.BufferString(b, caller.Func().Name)
 			}
 			enc = b.Bytes()
 			if l.encoder.CallerCache == nil {
@@ -186,7 +282,7 @@ func (l *Logger) encCaller(skip int) (enc encoding) {
 
 func (l *Logger) staticFields() encoding {
 	if l.config.LogStatics {
-		return l.encoder.StaticBuffer
+		return l.encoder.StaticBuffer.Bytes()
 	}
 	return nil
 }
@@ -196,8 +292,8 @@ func (l *Logger) fields() encoding {
 		b := buffer.Pool.Get()
 		defer b.Free()
 		for _, f := range l.config.Fields {
-			b.WriteBytes(f.pre)
-			b.WriteBytes(l.encoder.BufferVal(f.fn(l)))
+			l.encoder.BufferKey(b, l.encoder.ElemSep, string(f.pre))
+			l.encoder.BufferVal(b, f.fn(l))
 		}
 		return b.Bytes()
 	}
@@ -209,7 +305,8 @@ func (l *Logger) keyVals(keyvals ...any) encoding {
 		b := buffer.Pool.Get()
 		defer b.Free()
 		for i := 0; i < len(keyvals); i += 2 {
-			b.WriteBytes(l.encoder.BufferKeyVal(keyvals[i].(string), keyvals[i+1]))
+			l.encoder.BufferKey(b, l.encoder.ElemSep, keyvals[i].(string))
+			l.encoder.BufferVal(b, keyvals[i+1])
 		}
 		return b.Bytes()
 	}
@@ -218,7 +315,11 @@ func (l *Logger) keyVals(keyvals ...any) encoding {
 
 func (l *Logger) message(msg string) encoding {
 	if len(msg) > 0 {
-		return append(l.encoder.MessageBuffer, l.encoder.BufferString(msg)...)
+		b := buffer.Pool.Get()
+		defer b.Free()
+		b.Write(l.encoder.MessageBuffer.Bytes())
+		l.encoder.BufferString(b, msg)
+		return b.Bytes()
 	}
 	return nil
 }

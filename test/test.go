@@ -16,6 +16,7 @@ package test
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -34,116 +35,154 @@ type Test struct {
 }
 
 type Config struct {
-	t           *testing.T
-	FailFatal   bool
-	PrintTest   bool
-	PrintFail   bool
-	PrintTrace  bool
-	PrintDetail bool
-	Truncate    bool
-	Msg         string
-	willPrint   bool
+	t       *testing.T
+	log     *Buffer
+	Require bool
+	Print   bool
+	Trace   bool
+	Detail  bool
+	Msg     string
 }
 
-func New(t *testing.T, config *Config) *Test {
-	config.t = t
-	config.willPrint = config.PrintTest || config.PrintFail || config.PrintTrace || config.PrintDetail
-	return &Test{&sync.Mutex{}, config, 0}
+func New(t *testing.T, config ...*Config) (T *Test) {
+	var c *Config
+	if len(config) > 0 {
+		c = config[0]
+		c.t = t
+	} else {
+		c = &Config{
+			t:      t,
+			Trace:  true,
+			Detail: true,
+			Msg:    "%s",
+		}
+	}
+	T = &Test{&sync.Mutex{}, c, 0}
+	t.Cleanup(T.exit)
+	return
 }
 
 func (t *Test) Equal(expected any, actual any, msgArgs ...any) bool {
-	pass := reflect.DeepEqual(expected, actual)
-	t.output("Equal", pass, expected, actual, msgArgs)
-	return pass
+	t.t.Helper()
+	return t.run("Equal", reflect.DeepEqual(expected, actual), expected, actual, msgArgs)
 }
 
 func (t *Test) NotEqual(expected any, actual any, msgArgs ...any) bool {
-	pass := !reflect.DeepEqual(expected, actual)
-	t.output("NotEqual", pass, expected, actual, msgArgs)
-	return pass
+	t.t.Helper()
+	return t.run("NotEqual", !reflect.DeepEqual(expected, actual), expected, actual, msgArgs)
 }
 
 func (t *Test) True(actual bool, msgArgs ...any) bool {
-	pass := actual
-	t.output("True", pass, true, actual, msgArgs)
-	return pass
+	t.t.Helper()
+	return t.run("True", actual, true, actual, msgArgs)
 }
 
 func (t *Test) False(actual bool, msgArgs ...any) bool {
-	pass := !actual
-	t.output("False", pass, false, actual, msgArgs)
-	return pass
+	t.t.Helper()
+	return t.run("False", !actual, false, actual, msgArgs)
 }
 
 func (t *Test) Nil(actual any, msgArgs ...any) bool {
-	pass := actual == nil
-	t.output("Nil", pass, nil, actual, msgArgs)
-	return pass
+	t.t.Helper()
+	return t.run("Nil", actual == nil, nil, actual, msgArgs)
 }
 
 func (t *Test) NotNil(actual any, msgArgs ...any) bool {
-	pass := actual != nil
-	t.output("NotNil", pass, nil, actual, msgArgs)
-	return pass
+	t.t.Helper()
+	return t.run("NotNil", actual != nil, nil, actual, msgArgs)
 }
 
 func (t *Test) Error(err error, msgArgs ...any) bool {
-	pass := err != nil
-	t.output("Error", pass, nil, err, msgArgs)
-	return pass
+	t.t.Helper()
+	return t.run("Error", err != nil, nil, err, msgArgs)
 }
 
 func (t *Test) NoError(err error, msgArgs ...any) bool {
-	pass := err == nil
-	t.output("NoError", pass, nil, err, msgArgs)
-	return pass
+	t.t.Helper()
+	return t.run("NoError", err == nil, nil, err, msgArgs)
 }
 
 func (t *Test) Fail(msgArgs ...any) {
-	t.output("Fail", false, nil, nil, msgArgs)
+	t.t.Helper()
+	t.run("Fail", false, nil, nil, msgArgs)
 }
 
 func (t *Test) Pass(msgArgs ...any) {
-	t.output("Pass", true, nil, nil, msgArgs)
+	t.t.Helper()
+	t.run("Pass", true, nil, nil, msgArgs)
 }
 
-func (t *Test) output(test string, pass bool, expected any, actual any, msgArgs []any) {
+func (t *Test) run(test string, pass bool, expected any, actual any, msgArgs []any) bool {
+	t.t.Helper()
 	t.Lock()
-	msg := ""
-	if t.willPrint {
-		if t.PrintTest || (t.PrintFail && !pass) {
-			t.t.Log(Msg(t.cnt, test, pass, expected, actual, t.PrintTrace, t.PrintDetail, t.Msg, msgArgs...))
+	defer t.Unlock()
+	var msg string
+	if len(msgArgs) > 0 {
+		msg = fmt.Sprintf(t.Msg, msgArgs...)
+	} else if t.Msg != "%s" {
+		msg = t.Msg
+	}
+	m := Msg(t.cnt, t.t.Name()+"."+test, pass, expected, actual, true, true, msg)
+	if !pass {
+		if t.log == nil {
+			t.log = NewBuffer()
 		}
+		t.log.Write(m.Bytes())
+		if t.Require {
+			t.exit()
+		}
+	} else if t.Print {
+		os.Stdout.Write(m.Bytes())
 	}
 	t.cnt++
-	if !pass {
-		if t.FailFatal {
-			t.Unlock()
-			t.t.FailNow()
-		}
-		t.t.Log(msg)
-		defer t.t.Fail()
+	return pass
+}
+
+func (t *Test) exit() {
+	if t.log != nil {
+		os.Stdout.WriteString("--- FAIL: " + t.t.Name() + "\n")
+		os.Stdout.Write(t.log.Bytes())
+		os.Exit(1)
 	}
-	t.Unlock()
 }
 
 // ----------------------------------------------------------------------------
 // LIBRARY
 
-func Assert(t *testing.T, actual, expected any, msg ...any) {
-	if actual != expected {
-		t.Errorf(Msg(-1, "", false, expected, actual, true, true, userMsg(msg...)))
-	} else {
-		t.Logf(Msg(-1, "", true, expected, actual, true, true, userMsg(msg...)))
+func run(t *testing.T, cnt int, print, require bool, actual, expected any, msg string) (pass bool) {
+	t.Helper()
+	pass = actual == expected
+	m := Msg(cnt, t.Name(), pass, expected, actual, true, true, msg)
+	if !pass {
+		os.Stdout.WriteString("--- FAIL: " + t.Name() + "\n")
+		if require {
+			t.Fatalf(m.String())
+		}
+		t.Errorf(m.String())
+	} else if print {
+		os.Stdout.Write(m.Bytes())
 	}
+	return
 }
 
-func Require(t *testing.T, actual, expected any, msg ...any) {
-	if actual != expected {
-		t.Fatalf(Msg(-1, "", false, expected, actual, true, true, userMsg(msg...)))
-	} else {
-		t.Logf(Msg(-1, "", true, expected, actual, true, true, userMsg(msg...)))
-	}
+func Print(t *testing.T, actual, expected any, msg ...any) (pass bool) {
+	t.Helper()
+	return run(t, -1, true, false, actual, expected, userMsg(msg...))
+}
+
+func Printr(t *testing.T, actual, expected any, msg ...any) (pass bool) {
+	t.Helper()
+	return run(t, -1, true, true, actual, expected, userMsg(msg...))
+}
+
+func Assert(t *testing.T, actual, expected any, msg ...any) (pass bool) {
+	t.Helper()
+	return run(t, -1, false, false, actual, expected, userMsg(msg...))
+}
+
+func Require(t *testing.T, actual, expected any, msg ...any) (pass bool) {
+	t.Helper()
+	return run(t, -1, false, true, actual, expected, userMsg(msg...))
 }
 
 func userMsg(msg ...any) (s string) {
@@ -156,67 +195,65 @@ func userMsg(msg ...any) (s string) {
 	return
 }
 
-func Msg(num int, test string, pass bool, expected any, actual any, trace, detail bool, msg string, args ...any) string {
-	m := strings.Builder{}
-	m.Grow(256)
+func Msg(num int, test string, pass bool, expected any, actual any, trace, detail bool, msg string) (m *Buffer) {
+	m = NewBuffer()
 	m.WriteByte('\n')
-	if num > 0 {
-		m.WriteString("#")
+	if pass {
+		m.WriteString("PASS:     ")
+	} else {
+		m.WriteString("FAIL:     ")
+	}
+	if num > -1 {
+		m.WriteByte('#')
 		m.WriteString(strconv.Itoa(num))
 		m.WriteByte(' ')
 	}
-	if pass {
-		m.WriteString("PASS: ")
-	} else {
-		m.WriteString("FAIL: ")
-	}
 	if test != "" {
-		m.WriteString("test '")
 		m.WriteString(test)
-		m.WriteString("'. ")
 	}
 	if msg != "" {
-		m.WriteString(fmt.Sprintf(msg, args...))
+		m.WriteString(": ")
+		m.WriteString(msg)
 	}
 	m.WriteByte('\n')
 	if trace {
-		m.WriteString("  src:\t\t")
-		m.WriteString(Trace(3))
+		m.WriteString("src:      ")
+		m.Write(Trace(3).Bytes())
 		m.WriteByte('\n')
 	}
 	if detail {
-		format := "\t%#[1]v\n"
-		m.WriteString("  expected:")
+		format := "%#[1]v\n"
+		m.WriteString("expected: ")
 		m.WriteString(fmt.Sprintf(format, expected))
-		m.WriteString("  actual:")
+		m.WriteString("actual:   ")
 		m.WriteString(fmt.Sprintf(format, actual))
 		m.WriteByte('\n')
 	}
-	return m.String()
+	return
 }
 
-func Trace(skip int) string {
+func Trace(skip int) (t *Buffer) {
 	pc := make([]uintptr, 1)
 	runtime.Callers(skip+1, pc)
 	f, _ := runtime.CallersFrames(pc).Next()
+	t = NewBuffer()
 	if f.PC != 0 {
-		s := strings.Builder{}
-		s.Grow(64)
 		// packakge name
 		pkgStart := strings.LastIndex(f.Function, `/`) + 1
 		pkgEnd := strings.Index(f.Function[pkgStart:], `.`) + pkgStart
-		s.WriteString(f.Function[pkgStart:pkgEnd])
-		s.WriteString(`.`)
+		t.WriteString(f.Function[:pkgEnd])
+		t.WriteString(`.`)
 		// file name
 		fileStart := strings.LastIndex(f.File, `/`) + 1
 		fileEnd := strings.LastIndex(f.File, `.`)
-		s.WriteString(f.File[fileStart:fileEnd])
+		t.WriteString(f.File[fileStart:fileEnd])
 		// file line
-		s.WriteString(` line `)
-		s.WriteString(strconv.Itoa(f.Line))
-		return s.String()
+		t.WriteString(` line `)
+		t.WriteString(strconv.Itoa(f.Line))
+		return
 	}
-	return `unknown.source`
+	t.WriteString(`unknown source`)
+	return
 }
 
 func PrintTable(data [][]string, header bool) {
@@ -255,4 +292,41 @@ func PrintTable(data [][]string, header bool) {
 		t += rowDel
 	}
 	fmt.Print(t)
+}
+
+// ----------------------------------------------------------------------------
+// Buffer
+
+type Buffer []byte
+
+func NewBuffer() *Buffer {
+	b := make(Buffer, 0, 256)
+	return &b
+}
+
+func (b *Buffer) Write(p []byte) (n int, err error) {
+	*b = append(*b, p...)
+	return len(p), nil
+}
+
+func (b *Buffer) WriteString(s string) (n int, err error) {
+	*b = append(*b, s...)
+	return len(s), nil
+}
+
+func (b *Buffer) WriteByte(c byte) error {
+	*b = append(*b, c)
+	return nil
+}
+
+func (b *Buffer) String() string {
+	return string(*b)
+}
+
+func (b *Buffer) Bytes() []byte {
+	return *b
+}
+
+func (b *Buffer) Reset() {
+	*b = (*b)[:0]
 }

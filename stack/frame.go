@@ -140,10 +140,12 @@ func (f *Frame) parseFunc(i int) {
 }
 
 func (f *Frame) parsePkg(i1, i2 int) {
-	f.pkg = &src{
-		Name: f.frame.Function[i1:i2],
-		Dir:  f.frame.Function[:i1-1],
-		Path: f.frame.Function[:i2],
+	if i1 > 0 {
+		f.pkg = &src{
+			Name: f.frame.Function[i1:i2],
+			Dir:  f.frame.Function[:i1-1],
+			Path: f.frame.Function[:i2],
+		}
 	}
 }
 

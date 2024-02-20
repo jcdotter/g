@@ -31,16 +31,8 @@ func init() {
 	testLogger = New().Writers(buffer.New()).Build()
 }
 
-var config = &test.Config{
-	//PrintTest:   true,
-	PrintFail:   true,
-	PrintTrace:  true,
-	PrintDetail: true,
-	FailFatal:   true,
-	Msg:         "%s",
-}
-
 func TestAll(t *testing.T) {
+	t.Helper()
 	TestLevel(t)
 	TestTime(t)
 	TestService(t)
@@ -55,7 +47,7 @@ func TestAll(t *testing.T) {
 
 func TestLevel(t *testing.T) {
 	l := New().LevelKey("lvl").Build()
-	gt := test.New(t, config)
+	gt := test.New(t)
 	gt.Equal(`{"lvl":"debug"`, l.level(LevelDebug).String())
 	gt.Equal(`{"lvl":"info"`, l.level(LevelInfo).String())
 	gt.Equal(`{"lvl":"warn"`, l.level(LevelWarn).String())
@@ -67,27 +59,27 @@ func TestLevel(t *testing.T) {
 func TestTime(t *testing.T) {
 	f := "2006-01-02 15:04:05.000"
 	l := New().TimeKey("time").TimeFmt(f).Build()
-	gt := test.New(t, config)
+	gt := test.New(t)
 	gt.Equal(`,"time":"`+l.clock.time.Format(f)+`"`, l.time().String())
 }
 
 func TestService(t *testing.T) {
 	l := New().ServiceKey("service").ServiceName("test").Build()
-	gt := test.New(t, config)
+	gt := test.New(t)
 	gt.Equal(`,"service":"test"`, l.service().String())
 }
 
 func TestCallId(t *testing.T) {
 	l := New().CallIdKey("callid").Build()
-	gt := test.New(t, config)
+	gt := test.New(t)
 	gt.Equal(`,"callid":"123"`, l.callid("123").String())
 }
 
 func TestFrame(t *testing.T) {
 	f := stack.Caller(0).Build()
-	gt := test.New(t, config)
-	gt.Equal(`github.com/jcdotter/grpg/utils/logger`, f.Pkg().Path)
-	gt.Equal(`github.com/jcdotter/grpg/utils`, f.Pkg().Dir)
+	gt := test.New(t)
+	gt.Equal(`github.com/jcdotter/go/logger`, f.Pkg().Path)
+	gt.Equal(`github.com/jcdotter/go`, f.Pkg().Dir)
 	gt.Equal(`logger`, f.Pkg().Name)
 	gt.Equal(`logger_test.go`, f.File().Name)
 	gt.Equal(`TestFrame`, f.Func().Name)
@@ -96,15 +88,15 @@ func TestFrame(t *testing.T) {
 
 func TestCaller(t *testing.T) {
 	l := New().CallerKey("caller").Build()
-	gt := test.New(t, config)
-	gt.Equal(`,"pkg":"github.com/jcdotter/grpg/utils/logger","caller":"logger_test.go:109","fn":"TestCaller"`, l.encCaller(1).String())
+	gt := test.New(t)
+	gt.Equal(`,"pkg":"github.com/jcdotter/go/logger","caller":"logger_test.go:92","fn":"TestCaller"`, l.encCaller(1).String())
 }
 
 func TestStatic(t *testing.T) {
+	gt := test.New(t)
 	l := New().
 		AddStaticField("key", "value").
 		AddStaticField("key2", "value2").Build()
-	gt := test.New(t, config)
 	gt.Equal(`,"key":"value","key2":"value2"`, l.staticFields().String())
 }
 
@@ -114,19 +106,19 @@ func TestFields(t *testing.T) {
 	}).AddField("key2", func(l *Logger) any {
 		return "value2"
 	}).Build()
-	gt := test.New(t, config)
+	gt := test.New(t)
 	gt.Equal(`,"key":"value","key2":"value2"`, l.fields().String())
 }
 
 func TestKeyVals(t *testing.T) {
 	l := New().Build()
-	gt := test.New(t, config)
+	gt := test.New(t)
 	gt.Equal(`,"key":"value","key2":"value2"`, l.keyVals("key", "value", "key2", "value2").String())
 }
 
 func TestMessage(t *testing.T) {
+	gt := test.New(t)
 	l := New().MessageKey("msg").Build()
-	gt := test.New(t, config)
 	gt.Equal(`,"msg":"test"`, l.message("test").String())
 }
 

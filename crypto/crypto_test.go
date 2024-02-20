@@ -20,24 +20,15 @@ import (
 	"github.com/jcdotter/go/test"
 )
 
-var config = &test.Config{
-	//PrintTest:   true,
-	PrintFail:   true,
-	PrintTrace:  true,
-	PrintDetail: true,
-	FailFatal:   true,
-	Msg:         "%s",
-}
-
 func TestKey(t *testing.T) {
-	gt := test.New(t, config)
+	gt := test.New(t)
 	gt.Msg = "Crypto Key %s"
 	key := NewKey(128)
 	gt.Equal(16, len(key), "Length")
 }
 
 func TestGCM(t *testing.T) {
-	gt := test.New(t, config)
+	gt := test.New(t)
 	gt.Msg = "Crypto GCM %s"
 	key := NewKey(128)
 	gcm, e := NewGCM(key)
@@ -46,7 +37,7 @@ func TestGCM(t *testing.T) {
 }
 
 func TestEncrypt(t *testing.T) {
-	gt := test.New(t, config)
+	gt := test.New(t)
 	gt.Msg = "Crypto Encrypt %s"
 	key := NewKey(128)
 	text := []byte("hello world!")
