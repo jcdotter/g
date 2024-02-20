@@ -1,4 +1,4 @@
-module github.com/jcdotter/go //v0.1.0
+module github.com/jcdotter/go //v0.1.1
 
 go 1.21.2
 
