@@ -60,24 +60,24 @@ func TestMessage(t *testing.T) {
 	gt.Msg = "Message.Style.%s"
 	exp = []byte("\x1b[0m\x1b[1;97mTEST\x1b[0m")
 	res = Styl(Bold, HiWhite).Msg("TEST")
-	gt.Equal(exp, res.Bytes(), "init")
+	gt.Equal(string(exp), res.String(), "init")
 	exp = []byte("\x1b[0m\x1b[2;90mTEST\x1b[0m")
 	res = res.Styl(Faint, HiBlack)
-	gt.Equal(exp, res.Bytes(), "restyle")
+	gt.Equal(string(exp), res.String(), "restyle")
 
 	// Test Message Prepare
 	gt.Msg = "Message.Prepare.%s"
 	s := []byte("\x1b[0m")
 	b := bytes.Repeat([]byte{'A'}, 96)
-	exp = append(append(s, append(bytes.Repeat(append(b, '\n'), 9), b...)...), s...)
+	exp = append(append(s, append(bytes.Repeat(append(b, []byte("\r\n")...), 9), b...)...), s...)
 	res = Msg(bytes.Repeat(append(CursorShow, b...), 10))
-	gt.Equal(exp, res.Bytes(), "bytes")
+	gt.Equal(string(exp), res.String(), "bytes")
 
 	// Test Message Output
 	b = []byte("This is \x1b[0m\rtest\x1b[0A\n\x1b[0Atext\n")
-	exp = []byte("\x1b[0m\x1b[2;90mThis is test\ntext\n\x1b[0m")
+	exp = []byte("\x1b[0m\x1b[2;90mThis is test\r\ntext\r\n\x1b[0m")
 	res = Styl(Faint, HiBlack).Msg(b)
-	gt.Equal(exp, res.Bytes(), "bytes")
+	gt.Equal(string(exp), res.String(), "bytes")
 }
 
 func TestCursor(t *testing.T) {
@@ -138,11 +138,11 @@ func TestWrite(t *testing.T) {
 	gt.Equal(15, c.cur.p.x, "cur.x")
 	gt.Equal(0, c.cur.p.y, "cur.y")
 
-	gt.Msg = "Message.Write.Inst.%s"
-	c.cur.SavePos()
+	gt.Msg = "Message.Write.Instructions.%s"
+	c.cur.SetHome()
 	c.cur.Down(2)
 	c.WriteMsg(instInput)
-	c.cur.RestorePos()
+	c.cur.Home()
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	time.Sleep(500 * time.Millisecond)
@@ -151,12 +151,12 @@ func TestWrite(t *testing.T) {
 		c.Input([]byte{Rtn}, 300)
 		wg.Done()
 	}()
-	c.ReadLine()
-	wg.Wait()
-	c.Restore()
 	gt.Equal([]int{15, 0, 27}, c.cur.d, "dem")
 	gt.Equal(15, c.cur.p.x, "cur.x")
 	gt.Equal(0, c.cur.p.y, "cur.y")
+	c.ReadLine()
+	wg.Wait()
+	c.Restore()
 
 	gt.Msg = "Message.Write.Clear.%s"
 	c.cur.Clear()
@@ -184,25 +184,29 @@ func TestOptions(t *testing.T) {
 	gt.Equal(9, opt.Hovered, "Hovered")
 
 	gt.Msg = "Options.Render"
-	options := "\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mone\n" +
-		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mthree\n" +
-		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mfive\n" +
-		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mseven\n" +
-		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37meight\n" +
-		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mnine\n" +
-		"\x1b[0m\x1b[1;97m> \x1b[0m\x1b[1;97mten\n" +
+	options := "" +
+		"\r\n\x1b[0m\x1b[3;90mshowing search results for: 'e'\r\n\r\n" +
+		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mone\r\n" +
+		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mthree\r\n" +
+		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mfive\r\n" +
+		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mseven\r\n" +
+		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37meight\r\n" +
+		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mnine\r\n" +
+		"\x1b[0m\x1b[1;97m> \x1b[0m\x1b[1;97mten\r\n" +
 		"\x1b[0m"
 	gt.Equal(options, opt.Render().String())
 
 	gt.Msg = "Options.Up"
 	opt.Up()
-	options = "\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mone\n" +
-		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mthree\n" +
-		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mfive\n" +
-		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mseven\n" +
-		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37meight\n" +
-		"\x1b[0m\x1b[1;97m> \x1b[0m\x1b[1;97mnine\n" +
-		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mten\n" +
+	options = "" +
+		"\r\n\x1b[0m\x1b[3;90mshowing search results for: 'e'\r\n\r\n" +
+		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mone\r\n" +
+		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mthree\r\n" +
+		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mfive\r\n" +
+		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mseven\r\n" +
+		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37meight\r\n" +
+		"\x1b[0m\x1b[1;97m> \x1b[0m\x1b[1;97mnine\r\n" +
+		"\x1b[0m\x1b[2;37m  \x1b[0m\x1b[2;37mten\r\n" +
 		"\x1b[0m"
 	gt.Equal(options, opt.Render().String())
 
@@ -311,7 +315,6 @@ func TestFlag(t *testing.T) {
 
 func TestCommand(t *testing.T) {
 	gt := test.New(t)
-	gt.Print = true
 
 	// Setup test
 	name := "test"
@@ -326,7 +329,7 @@ func TestCommand(t *testing.T) {
 	gt.Equal(name, c.Name, "Name")
 	gt.Equal(name+use, c.Use.buf.String(), "Usage")
 	gt.Equal(name+description, c.Description.buf.String(), "Description")
-	gt.Equal(version, c.Version.buf.String(), "Version")
+	gt.Equal("\x1b[0mv0.0.0\x1b[0m", c.Version.buf.String(), "Version")
 
 	// Test Version Command
 	gt.Msg = "Command.Execute.%s"
@@ -334,12 +337,12 @@ func TestCommand(t *testing.T) {
 	i, err := Stdout.Read(buf)
 	gt.Equal(nil, err, "Terminal.Error")
 	gt.NotEqual(0, i, "BytesWritten")
-	gt.Equal(c.Name+" "+version+"\r\n", string(buf[:i]), "Version")
+	gt.Equal("test \x1b[0mv0.0.0\x1b[0m\r\n", string(buf[:i]), "Version")
 
 	// Test Help Command
 	c.Flags().Reset()
 	Stdout.Seek(0, 0)
-	exp := "\x1b[0mtest is a custom command line application.\x1b[0m\r\n\r\nUsage:\r\n\t\x1b[0mtest <command> [-a | --arg | --arg=value | --arg:value | -arg value...]\x1b[0m\r\n\r\nAvailable Persistent Flags:\r\n\t-v, --version          (subcommand)    display the command version\r\n\t-h, --help             (subcommand)    display the command help\r\n"
+	exp := "\x1b[0mtest is a custom command line application.\x1b[0m\r\n\r\nUsage:\r\n\t\x1b[0mtest <command>... [-a | --arg | --arg=value | --arg:value | -arg value...]\x1b[0m\r\n\r\nGlobal Flags:\r\n\t-v, --version          (subcommand)    display the command version\r\n\t-h, --help             (subcommand)    display the command help\r\n"
 	err = c.execute([]string{name, "--help"})
 	gt.Equal(nil, err, "Help.Error")
 	Stdout.Seek(0, 0)

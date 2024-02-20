@@ -154,7 +154,6 @@ func run(t *testing.T, cnt int, print, require bool, actual, expected any, msg s
 	pass = actual == expected
 	m := Msg(cnt, t.Name(), pass, expected, actual, true, true, msg)
 	if !pass {
-		os.Stdout.WriteString("--- FAIL: " + t.Name() + "\n")
 		if require {
 			t.Fatalf(m.String())
 		}
@@ -218,7 +217,7 @@ func Msg(num int, test string, pass bool, expected any, actual any, trace, detai
 	m.WriteByte('\n')
 	if trace {
 		m.WriteString("src:      ")
-		m.Write(Trace(3).Bytes())
+		m.Write(Trace(4).Bytes())
 		m.WriteByte('\n')
 	}
 	if detail {

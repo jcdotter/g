@@ -16,11 +16,6 @@ package parser
 
 import "strconv"
 
-type Parser struct {
-	b []byte // buffer
-	c int    // cursor
-}
-
 // object: series of (key, value) pairs
 // list: series of values
 // key: series of characters
@@ -30,25 +25,17 @@ type Parser struct {
 // Statndard Items
 // comment, whitestpace, string, number, boolean, null
 
-// if Find(Comment.Pre()).In(b).At(c) {
+// ----------------------------------------------------------------------------
+// CONDITIONAL STATEMENTS
 
-// Exists(item []byte, in []byte, at int) (int, bool)
-// Search(item []byte, in []byte, at int) int
-
+// Condition stores a single conditional operator and value
+// for evaluating if a condition is met. Conditions are used
+// as the building blocks for checks.
 type condition struct {
 	o byte   // operator (=, !, <, >, <=, >=)
-	b []byte // value
-}
-
-// Cond returns a condition with a value and an operator
-// if no operator is provided, the condition operator is =.
-// Operators: =, !, <, >, <=, >=
-func Cond(val []byte, op ...byte) (c condition) {
-	c = condition{b: val, o: condOp(op)}
-	if len(c.b) == 0 || (c.o > 1 && len(c.b) != 1) {
-		panic("invalid condition")
-	}
-	return
+	n bool   // is bytes, use s
+	b byte   // value
+	s []byte // value
 }
 
 func condOp(op []byte) byte {
@@ -69,36 +56,146 @@ func condOp(op []byte) byte {
 	panic("invalid operator")
 }
 
-type checks []check
-type check func(in []byte, at int) bool
+// Cond returns a condition with a value and an operator
+// if no operator is provided, the condition operator is =.
+// Operators: (=, !, <, >, <=, >=).
+// Example: Cond([]byte("hello"), '!') (not equal to "hello")
+func Cond(val byte, op ...byte) (c condition) {
+	return condition{b: val, o: condOp(op)}
+}
 
-func Checks(item ...condition) (c checks) {
-	for _, i := range item {
-		if len(i.b) == 1 {
+func CondBytes(val []byte, op ...byte) (c condition) {
+	switch len(val) {
+	case 0:
+		panic("invalid condition")
+	case 1:
+		return Cond(val[0], op...)
+	default:
+		return condition{o: condOp(op), n: true, s: val}
+	}
+}
+
+// Conds returns a series of conditions as a series of checks
+// Example: Conds(Cond([]byte("hello"), '!'), Cond([]byte("world"), '<'))
+func Conds(conditions ...condition) (c checks) {
+	for _, i := range conditions {
+		if i.n {
 			switch i.o {
 			case 0:
-				c = append(c, func(in []byte, at int) bool { return in[at] == i.b[0] })
+				c = append(c, func(in []byte, at int) (ok bool, end int) {
+					return Exists(i.s, in, at), at + len(i.s)
+				})
 			case 1:
-				c = append(c, func(in []byte, at int) bool { return in[at] != i.b[0] })
+				c = append(c, func(in []byte, at int) (ok bool, end int) {
+					return !Exists(i.s, in, at), at + len(i.s)
+				})
 			case 2:
-				c = append(c, func(in []byte, at int) bool { return in[at] < i.b[0] })
+				c = append(c, func(in []byte, at int) (ok bool, end int) {
+					return string(i.s) < string(in[at:len(i.s)]), at + len(i.s)
+				})
 			case 3:
-				c = append(c, func(in []byte, at int) bool { return in[at] > i.b[0] })
+				c = append(c, func(in []byte, at int) (ok bool, end int) {
+					return string(i.s) > string(in[at:len(i.s)]), at + len(i.s)
+				})
 			case 4:
-				c = append(c, func(in []byte, at int) bool { return in[at] <= i.b[0] })
+				c = append(c, func(in []byte, at int) (ok bool, end int) {
+					return string(i.s) <= string(in[at:len(i.s)]), at + len(i.s)
+				})
 			case 5:
-				c = append(c, func(in []byte, at int) bool { return in[at] >= i.b[0] })
+				c = append(c, func(in []byte, at int) (ok bool, end int) {
+					return string(i.s) >= string(in[at:len(i.s)]), at + len(i.s)
+				})
 			}
 		} else {
-			c = append(c, func(in []byte, at int) bool { return Exists(i.b, in, at) == (i.o == 0) })
+			switch i.o {
+			case 0:
+				c = append(c, func(in []byte, at int) (ok bool, end int) { return i.b == in[at], at + 1 })
+			case 1:
+				c = append(c, func(in []byte, at int) (ok bool, end int) { return i.b != in[at], at + 1 })
+			case 2:
+				c = append(c, func(in []byte, at int) (ok bool, end int) { return i.b < in[at], at + 1 })
+			case 3:
+				c = append(c, func(in []byte, at int) (ok bool, end int) { return i.b > in[at], at + 1 })
+			case 4:
+				c = append(c, func(in []byte, at int) (ok bool, end int) { return i.b <= in[at], at + 1 })
+			case 5:
+				c = append(c, func(in []byte, at int) (ok bool, end int) { return i.b >= in[at], at + 1 })
+			}
 		}
 	}
 	return
 }
 
-type Value struct {
-	pre checks
-	suf checks
+type check func(in []byte, at int) (ok bool, end int)
+type checks []check
+
+// Checks returns a series of checks as a series of checks
+func Checks(c ...check) checks {
+	return c
+}
+
+// And is used to combine checks with a logical AND operator
+func (c checks) And(in []byte, at int) (ok bool, end int) {
+	for _, i := range c {
+		if ok, end = i(in, at); !ok {
+			return
+		}
+	}
+	return
+}
+
+// Or is used to combine checks with a logical OR operator
+func (c checks) Or(in []byte, at int) (ok bool, end int) {
+	for _, i := range c {
+		if ok, end = i(in, at); ok {
+			return
+		}
+	}
+	return
+}
+
+// ----------------------------------------------------------------------------
+// PARSERS
+
+// Parser is a function that parses an item in a []byte at the position
+// provided and returns the item and the position after the item.
+type Parser func(in []byte, at int) (item []byte, end int)
+
+// item represents a parsable item where parsing begins when a pre-check
+// is met and ends when a post-check is met.
+type item struct {
+	pre  check  // syntax pre check conditions: how to find the item
+	post check  // syntax post check conditions: how to end the item
+	encl []item // enclosed items: items to be skipped if found
+}
+
+// Item returns a new item with pre and post checks
+// and a list of enclosed items to be skipped
+func Item(pre, post check, encl ...item) (i item) {
+	return item{pre: pre, post: post, encl: encl}
+}
+
+func (i item) Is(in []byte, at int) (ok bool, end int) {
+	return i.pre(in, at)
+}
+
+func (i item) Parse(in []byte, at int) (out []byte, end int) {
+	var ok bool
+	if ok, end = i.pre(in, at); ok {
+		for ; end < len(in); end++ {
+		loop:
+			for _, j := range i.encl {
+				if _, n := j.Parse(in, end); n > end {
+					end = n
+					goto loop
+				}
+			}
+			if ok, end = i.post(in, at); ok {
+				return in[at:end], end
+			}
+		}
+	}
+	return nil, at
 }
 
 // ----------------------------------------------------------------------------
@@ -186,7 +283,7 @@ func StringLit(in []byte, at int) (s []byte, end int) {
 	if q := in[at]; isQuote(q) {
 		for i := at + 1; i < len(in); i++ {
 			if in[i] == q && in[i-1] != '\\' {
-				//i++
+				i++
 				return in[at:i], i
 			}
 		}
@@ -194,18 +291,17 @@ func StringLit(in []byte, at int) (s []byte, end int) {
 	return nil, -1
 }
 
-// Number checks if a number exists at the specified position in the provided
+// Num checks if a number exists at the specified position in the provided
 // []byte. If the provided []byte contains a number, the function returns the
 // number and the position after the number, otherwise it returns nil and -1.
-func Number(in []byte, at int) (n []byte, end int) {
+func Num(in []byte, at int) (n []byte, end int) {
 	c := in[at]
-	d, e := 0, 0
+	d, e, i := 0, 0, at
 	if c == '-' || c == '+' {
-		at++
-		c = in[at]
+		i++
+		c = in[i]
 	}
 	if isNum(c) {
-		i := at
 		for ; i < len(in); i++ {
 			c := in[i]
 			// handle decimal
@@ -236,11 +332,31 @@ func Number(in []byte, at int) (n []byte, end int) {
 		}
 		return in[at:i], i
 	}
-	return nil, -1
+	return nil, at
 }
 
-func Boolean() {}
-func Null()    {}
+// Bool checks if a boolean exists at the specified position in the provided
+// []byte. If the provided []byte contains a boolean, the function returns the
+// boolean and the position after the boolean, otherwise it returns nil and -1.
+func Bool(in []byte, at int) (n []byte, end int) {
+	if b := []byte("true"); Exists(b, in, at) {
+		return b, at + 4
+	}
+	if b := []byte("false"); Exists(b, in, at) {
+		return b, at + 5
+	}
+	return nil, at
+}
+
+// Null checks if a null exists at the specified position in the provided
+// []byte. If the provided []byte contains a null, the function returns the
+// null and the position after the null, otherwise it returns nil and -1.
+func Null(in []byte, at int) (n []byte, end int) {
+	if b := []byte("null"); Exists(b, in, at) {
+		return b, at + 4
+	}
+	return nil, at
+}
 
 // ----------------------------------------------------------------------------
 // CONVERSIONS
@@ -260,6 +376,9 @@ func String(s []byte) string {
 func Int(s []byte) int {
 	if n, err := strconv.Atoi(string(s)); err == nil {
 		return n
+	}
+	if f := Float(s); f != 0 {
+		return int(f)
 	}
 	return 0
 }

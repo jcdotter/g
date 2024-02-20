@@ -22,19 +22,47 @@ import (
 
 func TestNum(t *testing.T) {
 	var n []byte
-	n, _ = Number([]byte("123 "), 0)
-	test.Print(t, Int(n), 123, "parse int")
-	n, _ = Number([]byte("123.456 "), 0)
-	test.Print(t, Float(n), 123.456, "parse float")
-	n, _ = Number([]byte("123.456e-2 "), 0)
-	test.Print(t, Float(n), 1.23456, "parse exponent")
+	n, _ = Num([]byte("123 "), 0)
+	test.Assert(t, Int(n), 123, "parse int")
+	n, _ = Num([]byte("123.456 "), 0)
+	test.Assert(t, Float(n), 123.456, "parse float")
+	n, _ = Num([]byte("123.456e-2 "), 0)
+	test.Assert(t, Float(n), 1.23456, "parse exponent")
 }
 
-/* func TestString(t *testing.T) {
+func TestString(t *testing.T) {
 	var b []byte
 	var s string
-	b, _ = StringLit([]byte(`"hello\nworld" `), 0)
-	test.Printr(t, string(b), `"hello"`, "parse string literal")
+	b, _ = StringLit([]byte("\"hello\nworld\" "), 0)
+	test.Assert(t, string(b), "\"hello\nworld\"", "parse string literal")
 	s = String(b)
-	test.Printr(t, s, "hello\nworld", "parse string")
-} */
+	test.Assert(t, s, "hello\nworld", "parse string")
+}
+
+func TestBool(t *testing.T) {
+	var b []byte
+	b, _ = Bool([]byte("true "), 0)
+	test.Assert(t, string(b), "true", "parse bool")
+	b, _ = Bool([]byte("false "), 0)
+	test.Assert(t, string(b), "false", "parse bool")
+}
+
+func TestNull(t *testing.T) {
+	var b []byte
+	b, _ = Null([]byte("null "), 0)
+	test.Assert(t, string(b), "null", "parse null")
+}
+
+func TestExists(t *testing.T) {
+	ok := Exists([]byte("ts"), []byte("exists "), 0)
+	test.Assert(t, false, ok, "parse exists fail")
+	ok = Exists([]byte("ex"), []byte("exists "), 0)
+	test.Assert(t, true, ok, "parse exists pass")
+}
+
+func TestSearch(t *testing.T) {
+	i := Search([]byte{'}'}, []byte("{{}}"), 0)
+	test.Assert(t, 2, i, "search")
+	i = Find('}', []byte("{{}}"), 0)
+	test.Assert(t, 2, i, "find")
+}
