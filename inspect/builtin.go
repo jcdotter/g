@@ -15,6 +15,7 @@
 package inspect
 
 import (
+	"go/token"
 	"os"
 
 	"github.com/jcdotter/go/data"
@@ -198,4 +199,25 @@ func init() {
 	// connect builtins
 	BuiltinPkg.Files = data.Of(BuiltinFile)
 	BuiltinFile.p = BuiltinPkg
+	// add types to buildin values
+	types := BuiltinTypes.List()
+	for _, v := range BuiltinValues.List() {
+		v.(*Value).typ = types[v.(*Value).kind].(*Type)
+	}
+}
+
+func TypeToken(t token.Token) *Type {
+	switch t {
+	case token.INT:
+		return BuiltinTypes.Get("int").(*Type)
+	case token.FLOAT:
+		return BuiltinTypes.Get("float64").(*Type)
+	case token.IMAG:
+		return BuiltinTypes.Get("complex128").(*Type)
+	case token.STRING:
+		return BuiltinTypes.Get("string").(*Type)
+	case token.CHAR:
+		return BuiltinTypes.Get("rune").(*Type)
+	}
+	return nil
 }

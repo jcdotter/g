@@ -14,9 +14,16 @@
 
 package inspect
 
-type Object struct{}
-type Pointer struct{}
-type Array struct{}
+type Object interface{}
+type Pointer struct {
+	typ  *Type
+	elem *Type
+}
+type Array struct {
+	typ  *Type
+	elem *Type
+	len  int
+}
 type Map struct{}
 type Chan struct{}
 type Struct struct{}

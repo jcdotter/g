@@ -22,6 +22,10 @@ import (
 var NoType = 1
 var Values1, Values2 int = 1, 2
 var Value3 error = nil
+var Value4 = "string"
+var Value5 = &Values2
+
+var Value6 = 1 + 2
 
 const (
 	Const1 uint8 = iota
@@ -32,6 +36,10 @@ var (
 	Var1,
 	Var2 string
 )
+
+func Func1() string {
+	return "string"
+}
 
 /*
 var (

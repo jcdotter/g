@@ -16,7 +16,6 @@ package inspect
 
 import (
 	"go/ast"
-	"go/token"
 
 	"github.com/jcdotter/go/data"
 )
@@ -190,22 +189,6 @@ type Type struct {
 	imp    *Import // the type source if imported
 	kind   byte    // the type kind
 	object Object  // the type object, if an object type
-}
-
-func TypeToken(t token.Token) *Type {
-	switch t {
-	case token.INT:
-		return BuiltinTypes.Get("int").(*Type)
-	case token.FLOAT:
-		return BuiltinTypes.Get("float64").(*Type)
-	case token.IMAG:
-		return BuiltinTypes.Get("complex128").(*Type)
-	case token.STRING:
-		return BuiltinTypes.Get("string").(*Type)
-	case token.CHAR:
-		return BuiltinTypes.Get("rune").(*Type)
-	}
-	return nil
 }
 
 // data.Elem interface method
