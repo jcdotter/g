@@ -14,10 +14,20 @@
 
 package inspect
 
-type Object struct{}
-type Pointer struct{}
-type Array struct{}
-type Map struct{}
-type Chan struct{}
-type Struct struct{}
-type Field struct{}
+import (
+	"go/parser"
+	"go/token"
+	"testing"
+)
+
+func TestAst(t *testing.T) {
+	var err error
+	p := NewPackage("inspect")
+	p.Name = "inspect"
+	f := NewFile(p, "sample_test")
+	f.t, err = parser.ParseFile(token.NewFileSet(), "sample_test.go", nil, 0)
+	if err != nil {
+		return
+	}
+	f.Inspect()
+}

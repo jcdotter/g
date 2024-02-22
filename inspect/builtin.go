@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://github.com/jcdotter/grpg/LICENSE
+//     http://github.com/jcdotter/go/LICENSE
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -136,7 +136,7 @@ var BuiltinTypes = data.Of(
 	nil, //&Type{file: BuiltinFile, name: "map", kind: MAP},
 	nil, //&Type{file: BuiltinFile, name: "pointer", kind: POINTER},
 	nil, //&Type{file: BuiltinFile, name: "slice", kind: SLICE},
-	nil, //&Type{file: BuiltinFile, name: "string", kind: STRING},
+	&Type{file: BuiltinFile, name: "string", kind: STRING},
 	nil, //&Type{file: BuiltinFile, name: "struct", kind: STRUCT},
 	&Type{file: BuiltinFile, name: "unsafe.Pointer", kind: UNSAFEPOINTER},
 	nil,

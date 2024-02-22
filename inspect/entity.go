@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://github.com/jcdotter/grpg/LICENSE
+//     http://github.com/jcdotter/go/LICENSE
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +16,7 @@ package inspect
 
 import (
 	"go/ast"
+	"go/token"
 
 	"github.com/jcdotter/go/data"
 )
@@ -72,7 +73,8 @@ type Package struct {
 	Values  *data.Data // the declared values in the package
 	Types   *data.Data // the declared types in the package
 	Funcs   *data.Data // the declared functions in the package
-	//queue []*Type  // referenced types found during parsing
+	i       bool       // the package has been inspected
+	q       []**Type   // unresolved types found during parsing
 }
 
 func NewPackage(path string) *Package {
@@ -88,13 +90,13 @@ func NewPackage(path string) *Package {
 
 // data.Elem interface method
 func (p *Package) Key() string {
-	return p.Name
+	return p.Path
 }
 
 type File struct {
 	p *Package   // the parser parsing the file
-	i *data.Data // the imported packages in the file
 	n string     // the file name
+	i *data.Data // the file imports
 	t *ast.File  // the file abstract syntax tree
 }
 
@@ -121,23 +123,16 @@ func (f *File) Package() *Package {
 	return f.p
 }
 
-// Imports returns the imported packages in the file.
-func (f *File) Imports() *data.Data {
-	return f.i
-}
-
 // Import represents an imported package in a file.
 type Import struct {
-	file    *File    // the file where the import is declared
-	doc     string   // the import documentation
-	comment string   // the import comment
-	name    string   // the import alias or pkg suffix
-	pkg     *Package // the imported package
+	file *File    // the file where the import is declared
+	name string   // the import alias or pkg suffix
+	pkg  *Package // the imported package
 }
 
 // data.Elem interface method
 func (i *Import) Key() string {
-	return i.name
+	return i.file.Key() + i.name
 }
 
 // Name returns the import name.
@@ -157,12 +152,10 @@ func (i *Import) File() *File {
 
 // Value represents a declared value (const or var) in a file.
 type Value struct {
-	file    *File  // the file where the value is declared
-	comment string // the value comment
-	kind    byte   // the value kind (const or var)
-	name    string // the value name
-	typ     *Type  // the value type
-	value   string // the value expression
+	file *File  // the file where the value is declared
+	kind byte   // the value kind (const or var)
+	name string // the value name
+	typ  *Type  // the value type
 }
 
 // data.Elem interface method
@@ -190,19 +183,31 @@ func (v *Value) Kind() byte {
 	return v.kind
 }
 
-// Value returns the value expression.
-func (v *Value) Value() string {
-	return v.value
-}
-
 // Type represents a declared type in a file.
 type Type struct {
-	file    *File   // he file where the type is declared
-	comment string  // the type comment
-	name    string  // the type name
-	imp     *Import // the type source if imported
-	kind    byte    // the type kind
-	object  Object  // the type object, if an object type
+	file   *File   // he file where the type is declared
+	name   string  // the type name
+	imp    *Import // the type source if imported
+	kind   byte    // the type kind
+	object Object  // the type object, if an object type
+}
+
+func TypeToken(t token.Token) *Type {
+	switch t {
+	case token.IDENT:
+		return &Type{name: "bool", kind: BOOL}
+	case token.INT:
+		return &Type{name: "int", kind: INT}
+	case token.FLOAT:
+		return &Type{name: "float64", kind: FLOAT64}
+	case token.IMAG:
+		return &Type{name: "complex128", kind: COMPLEX128}
+	case token.STRING:
+		return &Type{name: "string", kind: STRING}
+	case token.CHAR:
+		return &Type{name: "rune", kind: RUNE}
+	}
+	return nil
 }
 
 // data.Elem interface method
