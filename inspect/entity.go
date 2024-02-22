@@ -194,18 +194,16 @@ type Type struct {
 
 func TypeToken(t token.Token) *Type {
 	switch t {
-	case token.IDENT:
-		return &Type{name: "bool", kind: BOOL}
 	case token.INT:
-		return &Type{name: "int", kind: INT}
+		return BuiltinTypes.Get("int").(*Type)
 	case token.FLOAT:
-		return &Type{name: "float64", kind: FLOAT64}
+		return BuiltinTypes.Get("float64").(*Type)
 	case token.IMAG:
-		return &Type{name: "complex128", kind: COMPLEX128}
+		return BuiltinTypes.Get("complex128").(*Type)
 	case token.STRING:
-		return &Type{name: "string", kind: STRING}
+		return BuiltinTypes.Get("string").(*Type)
 	case token.CHAR:
-		return &Type{name: "rune", kind: RUNE}
+		return BuiltinTypes.Get("rune").(*Type)
 	}
 	return nil
 }
