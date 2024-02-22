@@ -107,13 +107,14 @@ var BuiltinImport = &Import{
 }
 
 var BuiltinValues = data.Of(
+	&Value{file: BuiltinFile, name: "nil", kind: INVALID},
 	&Value{file: BuiltinFile, name: "true", kind: BOOL},
 	&Value{file: BuiltinFile, name: "false", kind: BOOL},
-	&Value{file: BuiltinFile, name: "nil", kind: INVALID},
 	&Value{file: BuiltinFile, name: "iota", kind: INT},
 )
 
 var BuiltinTypes = data.Of(
+	&Type{file: BuiltinFile, name: "nil", kind: INVALID},
 	&Type{file: BuiltinFile, name: "bool", kind: BOOL},
 	&Type{file: BuiltinFile, name: "int", kind: INT},
 	&Type{file: BuiltinFile, name: "int8", kind: INT8},

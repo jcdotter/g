@@ -24,8 +24,15 @@ var Values1, Values2 int = 1, 2
 var Value3 error = nil
 var Value4 = "string"
 var Value5 = &Values2
+var Value6 = (int32)(1)
 
-var Value6 = 1 + 2
+// var Value7, Value8 = (Func1()) // test when inspect func is implemented
+var Value9 = 1 << 1
+var Value10 = true
+var Value11 = ("string") + "string"
+var Value12 = true == false
+var Value13 = [3]string{"one", "two", "three"}
+var Value14 = func(one, two string) (three int, four int) { return 1, 2 }
 
 const (
 	Const1 uint8 = iota
@@ -37,8 +44,12 @@ var (
 	Var2 string
 )
 
-func Func1() string {
-	return "string"
+func Func1() (string, string) {
+	return "1", "string"
+}
+
+func Func2() int {
+	return 1
 }
 
 /*

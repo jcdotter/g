@@ -14,17 +14,42 @@
 
 package inspect
 
+import "github.com/jcdotter/go/data"
+
 type Object interface{}
-type Pointer struct {
-	typ  *Type
-	elem *Type
-}
+
 type Array struct {
 	typ  *Type
 	elem *Type
 	len  int
 }
-type Map struct{}
+
+type Struct struct {
+	typ     *Type
+	fields  *data.Data
+	methods *data.Data
+}
+
+func NewStruct(typ *Type) *Struct {
+	return &Struct{
+		typ:     typ,
+		fields:  data.Make[*Field](data.Cap),
+		methods: data.Make[*Func](data.Cap),
+	}
+}
+
+type Field struct {
+	typ    *Type
+	of     *Type
+	name   string
+	tag    string
+	offset int
+}
+
+func (f *Field) Key() string {
+	return f.name
+}
+
+type Pointer struct{ typ, elem *Type }
+type Map struct{ typ, key, elem *Type }
 type Chan struct{}
-type Struct struct{}
-type Field struct{}

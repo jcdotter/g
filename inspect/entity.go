@@ -223,13 +223,12 @@ func (t *Type) Object() Object {
 
 // Func represents a declared function in a file.
 type Func struct {
-	file    *File      // the file where the function is declared
-	comment string     // the function comment
-	name    string     // the function name
-	typ     *Type      // the function type
-	of      *Type      // the function receiver type
-	in      *data.Data // the function input parameters
-	out     *data.Data // the function output parameters
+	file *File      // the file where the function is declared
+	name string     // the function name
+	typ  *Type      // the function type
+	of   *Type      // the function receiver type
+	in   *data.Data // the function input parameter types
+	out  *data.Data // the function output parameter types
 }
 
 // data.Elem interface method

@@ -19,10 +19,11 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"reflect"
+	"strconv"
 	"strings"
 
+	"github.com/jcdotter/go/data"
 	"github.com/jcdotter/go/path"
 )
 
@@ -150,25 +151,37 @@ func (f *File) InspectValues(k byte, specs []ast.Spec) (err error) {
 		for i, n := range vals.Names {
 			if f.p.Values.Get(n.Name) == nil {
 				names[i] = n
-				num--
+				continue
 			}
+			num--
 		}
 		if num == 0 {
 			continue
 		}
 
-		// build the value and add it to the package
-		var Type *Type
-
 		// get declared type if it exists. if not,
 		// the prior declared type will set the
 		// type of this value if there are no
 		// assginment expressions in this value.
+		var typ *Type
 		if vals.Type != nil {
-			Type = f.TypeExpr(vals.Type)
-			priorType = Type
+			typ = f.TypeExpr(vals.Type)
+			priorType = typ
 		} else if priorType != nil && len(vals.Values) == 0 {
-			Type = priorType
+			typ = priorType
+		}
+
+		// if the type is not declared and the value
+		// is function call, store the output types
+		// to be applied to the ValueSpec.Values
+		var types []*Type
+		if typ == nil && num > 1 && len(vals.Values) == 1 {
+			types = make([]*Type, num)
+			if t := f.TypeExpr(vals.Values[0]); t != nil && t.kind == FUNC && t.object != nil {
+				for i, t := range t.object.(*Func).out.List() {
+					types[i] = t.(*Type)
+				}
+			}
 		}
 
 		// iterate through and create value for each named
@@ -188,10 +201,14 @@ func (f *File) InspectValues(k byte, specs []ast.Spec) (err error) {
 			f.p.Values.Add(val)
 
 			// set value type if already declared
-			// or derive it from value expression
-			if Type != nil {
-				val.typ = Type
-			} else if len(vals.Values) > i {
+			// or derrived from function call output,
+			// otherwise derive it from value expression
+			switch {
+			case typ != nil:
+				val.typ = typ
+			case len(types) > i:
+				val.typ = types[i]
+			case len(vals.Values) > i:
 				val.typ = f.TypeExpr(vals.Values[i])
 			}
 
@@ -234,6 +251,12 @@ func (f *File) InspectFunc(fn *ast.FuncDecl) (err error) {
 	return
 }
 
+// ----------------------------------------------------------------------------
+// Type Evaluation Methods
+
+// GetType returns the type of the name provided by first checking
+// builtin types, then declared types, and lastly inspecting the
+// ident object if it exists.
 func (f *File) GetType(name string) (typ *Type, err error) {
 
 	// check builtin types
@@ -286,32 +309,43 @@ func (f *File) TypeExpr(e ast.Expr) *Type {
 	// using the expresssion list below
 
 	switch t := e.(type) {
-	case *ast.ParenExpr:
-		// parenthetical expression (x)
-		return f.TypeExpr(t.X)
-	case *ast.Ident:
-		// expression of true, false, iota, nil or a declared type
-		return f.TypeIdent(t)
 	case *ast.BasicLit:
 		// literal expression of int, float, rune, string
 		return TypeToken(t.Kind)
+	case *ast.ParenExpr:
+		return f.TypeExpr(t.X)
+	case *ast.Ident:
+		return f.TypeIdent(t)
 	case *ast.StarExpr:
-		// pointer expression
-		return f.TypePointer(f.TypeExpr(t.X))
-	case *ast.SelectorExpr:
-		// selector expression
+		return f.TypePointer(t)
 	case *ast.UnaryExpr:
-		// unary expression
-		// TODO: t.X can be a type or value
-		return f.TypeUnary(t.Op, f.TypeExpr(t.X))
+		return f.TypeUnary(t)
 	case *ast.BinaryExpr:
-		// binary expression
+		return f.TypeBinary(t)
 	case *ast.CallExpr:
-		switch t := t.Fun.(type) {
-		case *ast.ParenExpr:
-			return f.TypeExpr(t.X)
-
+		return f.TypeCall(t)
+	case *ast.FuncLit:
+		return f.TypeFunc(t)
+	case *ast.CompositeLit:
+		switch c := t.Type.(type) {
+		case *ast.Ident:
+			return f.TypeIdent(c)
+		case *ast.SelectorExpr:
+			// TODO: return f.TypeSelector(c)
+		case *ast.ArrayType:
+			return f.TypeArray(c)
+		case *ast.MapType:
+			return f.TypeMap(c)
+		case *ast.StructType:
+			return f.TypeStruct(c)
 		}
+	case *ast.SelectorExpr:
+		// call to an external package function, value or type
+		// or call to internal package method or struct field
+	default:
+		// case *ast.TypeAssertExpr:
+		// case *ast.IndexExpr:
+		// case *ast.SliceExpr:
 	}
 	fmt.Println("EXPR:", reflect.TypeOf(e))
 	return nil
@@ -354,46 +388,45 @@ func (f *File) TypeExpr(e ast.Expr) *Type {
 }
 
 // TypeIdent returns the type of the identifier in the file
-// by checking builtin values and then declared types.
-// TODO: Ident can be a type, value or function.
+// by first checking builtin values, then declared types,
+// and lastly inspecting the ident object if it exists.
 func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
+
+	// check builtin values and parsed types
 	if v := BuiltinValues.Get(i.Name); v != nil {
 		return v.(*Value).typ
 	}
 	if typ, _ = f.GetType(i.Name); typ != nil {
 		return
 	}
-	fmt.Println("Unknown IDENT:", i.Name)
+
+	// if ident is not in types and has an object,
+	// inspect the object and return the type
 	if i.Obj != nil {
 		switch i.Obj.Kind {
 		case ast.Var:
-			f.InspectValue(VAR, i.Obj.Decl.(*ast.ValueSpec))
-			return f.p.Values.Get(i.Name).(*Value).typ
+			if err := f.InspectValue(VAR, i.Obj.Decl.(*ast.ValueSpec)); err == nil {
+				return f.p.Values.Get(i.Name).(*Value).typ
+			}
 		case ast.Con:
-			f.InspectValue(CONST, i.Obj.Decl.(*ast.ValueSpec))
-			return f.p.Values.Get(i.Name).(*Value).typ
+			if err := f.InspectValue(CONST, i.Obj.Decl.(*ast.ValueSpec)); err == nil {
+				return f.p.Values.Get(i.Name).(*Value).typ
+			}
 		case ast.Typ:
-			f.InspectType([]ast.Spec{i.Obj.Decl.(*ast.TypeSpec)})
-			return f.p.Types.Get(i.Name).(*Type)
+			if err := f.InspectType([]ast.Spec{i.Obj.Decl.(*ast.TypeSpec)}); err == nil {
+				return f.p.Types.Get(i.Name).(*Type)
+			}
 		case ast.Fun:
-			f.InspectFunc(i.Obj.Decl.(*ast.FuncDecl))
-			// TODO: need to know the value placement to know
-			// which output to use from the function
-			//return f.p.Funcs.Get(i.Name).(*Func)
+			if err := f.InspectFunc(i.Obj.Decl.(*ast.FuncDecl)); err == nil {
+				return f.p.Funcs.Get(i.Name).(*Func).typ
+			}
 		}
-		fmt.Println("OBJECT:",
-			i.Obj.Kind,
-			i.Obj.Name,
-			reflect.TypeOf(i.Obj.Decl),
-			reflect.TypeOf(i.Obj.Type),
-		)
 	}
-	os.Exit(1)
 	return
 }
 
-// TypePointer returns the pointer type of the type provided.
-func (f *File) TypePointer(t *Type) (typ *Type) {
+// typePointer returns the pointer type of the type provided.
+func (f *File) typePointer(t *Type) (typ *Type) {
 	n := "*" + t.name
 	if t := f.p.Types.Get(n); t != nil {
 		return t.(*Type)
@@ -409,11 +442,117 @@ func (f *File) TypePointer(t *Type) (typ *Type) {
 	return
 }
 
+// TypePointer returns the pointer type of the type provided.
+func (f *File) TypePointer(p *ast.StarExpr) (typ *Type) {
+	return f.typePointer(f.TypeExpr(p.X))
+}
+
 // TypeUnary returns the unary type of the type provided.
-func (f *File) TypeUnary(op token.Token, t *Type) (typ *Type) {
-	switch op {
+// Typically used for &Expr expressions.
+func (f *File) TypeUnary(u *ast.UnaryExpr) (typ *Type) {
+	switch u.Op {
 	case token.AND:
-		return f.TypePointer(t)
+		return f.typePointer(f.TypeExpr(u.X))
 	}
+	return
+}
+
+// TypeBinary returns the binary type of the types provided.
+// Typically used for equation expressions (0+0 or ""+"").
+func (f *File) TypeBinary(b *ast.BinaryExpr) (typ *Type) {
+	// return type of the left expression if it is not
+	// a basic literal. Go only adapts the type of basic
+	// literals, so we can assume the type of a non-basic
+	// literal is the type of the binary expression.
+	x := b.X
+	if p, ok := x.(*ast.ParenExpr); ok {
+		x = p.X
+	}
+	if _, ok := x.(*ast.BasicLit); !ok {
+		return f.TypeExpr(x)
+	}
+	return f.TypeExpr(b.Y)
+}
+
+// TypeCall returns the type of the call expression provided.
+func (f *File) TypeCall(c *ast.CallExpr) (typ *Type) {
+	return f.TypeExpr(c.Fun)
+}
+
+// TypeFunc returns the type of the function literal provided.
+func (f *File) TypeFunc(fn *ast.FuncLit) (typ *Type) {
+	// TODO: implement function literal as a function in the package.
+	// currently only stored as a value in the package.
+	fnc := &Func{file: f}
+	typ = &Type{
+		file:   f,
+		kind:   FUNC,
+		object: fnc,
+	}
+	fnc.typ = typ
+	f.TypeFuncParams(fn.Type.Params, fnc.in)
+	f.TypeFuncParams(fn.Type.Results, fnc.out)
+	return
+}
+
+// TypeFuncParams adds the type of the function
+// parameters provided to the data list provided.
+func (f *File) TypeFuncParams(from *ast.FieldList, to *data.Data) {
+	if from != nil {
+		for _, field := range from.List {
+			t := f.TypeExpr(field.Type)
+			for range field.Names {
+				to.Add(t)
+			}
+		}
+	}
+}
+
+// TypeArray returns the type of the array expression provided.
+func (f *File) TypeArray(a *ast.ArrayType) (typ *Type) {
+	arr := &Array{elem: f.TypeExpr(a.Elt)}
+	typ = &Type{
+		file:   f,
+		object: arr,
+	}
+	arr.typ = typ
+	if a.Len == nil {
+		typ.kind = SLICE
+		typ.name = "[]" + arr.elem.name
+	} else if _, ok := a.Len.(*ast.Ellipsis); ok {
+		typ.kind = ELIPS
+		typ.name = "..." + arr.elem.name
+	} else {
+		typ.kind = ARRAY
+		l := a.Len.(*ast.BasicLit).Value
+		arr.len, _ = strconv.Atoi(l)
+		typ.name = "[" + l + "]" + arr.elem.name
+	}
+	return
+}
+
+// TypeMap returns the type of the map expression provided.
+func (f *File) TypeMap(m *ast.MapType) (typ *Type) {
+	mp := &Map{key: f.TypeExpr(m.Key), elem: f.TypeExpr(m.Value)}
+	typ = &Type{
+		file:   f,
+		kind:   MAP,
+		object: mp,
+	}
+	mp.typ = typ
+	typ.name = "map[" + mp.key.name + "]" + mp.elem.name
+	return
+}
+
+// TypeStruct returns the type of the struct expression provided.
+func (f *File) TypeStruct(s *ast.StructType) (typ *Type) {
+	typ = &Type{
+		file: f,
+		kind: STRUCT,
+	}
+	str := NewStruct(typ)
+	typ.object = str
+	// TODO: loop fields and add them to the struct
+	// if field is func, add as method, else add as field
 	return
 }
