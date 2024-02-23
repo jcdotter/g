@@ -73,7 +73,6 @@ type Package struct {
 	Types   *data.Data // the declared types in the package
 	Funcs   *data.Data // the declared functions in the package
 	i       bool       // the package has been inspected
-	q       []**Type   // unresolved types found during parsing
 }
 
 func NewPackage(path string) *Package {

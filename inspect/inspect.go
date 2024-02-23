@@ -47,8 +47,9 @@ func Inspect(PkgPath string) (*Package, error) {
 // Parse parses the package content if not already parsed. If Entites are provided,
 // the package will only parse the provided entities, otherwise the package will
 // parse all entities in the package. Returns an error if the package cannot be parsed.
-// TODO: Make file parsing concurrent.
 func (p *Package) Parse() (err error) {
+	// TODO: Make file parsing concurrent.
+
 	// parse each file in the package
 	for _, f := range path.Files(p.Path) {
 		var file *File
@@ -215,6 +216,7 @@ func (f *File) InspectValues(k byte, specs []ast.Spec) (err error) {
 				val.typ = f.TypeExpr(vals.Values[i])
 			}
 
+			// TODO: remove this after testing
 			// print test
 			f.PrintValue(val)
 		}
@@ -257,6 +259,7 @@ func (f *File) InspectTypes(specs []ast.Spec) (err error) {
 		typ.name = t.Name.Name
 		f.p.Types.Add(typ)
 
+		// TODO: remove this after testing
 		// print test
 		f.PrintType(typ)
 	}
@@ -298,6 +301,7 @@ func (f *File) PrintType(t *Type) {
 }
 
 func (f *File) InspectFunc(fn *ast.FuncDecl) (err error) {
+	// TODO: implement function inspection
 	//fmt.Println("FUNC DECL:", fn.Name.Name)
 	return
 }
