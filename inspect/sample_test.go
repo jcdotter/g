@@ -28,7 +28,39 @@ import (
 	String  string
 ) */
 
+type Str string
+
+type S struct {
+	X string
+}
+
+type T struct {
+	X string
+	Y S
+}
+
+func (t T) C() any {
+	return t.Y
+}
+
+func (s S) D() any {
+	return s.X
+}
+
+var A = S{X: "string"}
+var B = T{X: "string", Y: A}
+var C = func() T { return B }
+
 var N = data.IndexMin
+var X = (&B).X
+var Y = (C()).X
+var Z = C().Y.X
+var W = B.C()
+var V = B.C().(S).X
+
+var O = (func() S { return S{X: "string"} })().X
+
+var M *data.Data
 
 /*
 var NoType = 1

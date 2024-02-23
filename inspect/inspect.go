@@ -317,7 +317,7 @@ func (f *File) InspectFunc(fn *ast.FuncDecl) (err error) {
 	// set up function type
 	var fnc *Func
 	if typ := f.TypeFunc(fn.Type); typ != nil {
-		fnc := typ.object.(*Func)
+		fnc = typ.object.(*Func)
 		fnc.name = fn.Name.Name
 	} else {
 		return ErrInvalidEntity
@@ -397,9 +397,8 @@ func (f *File) GetType(name string) (typ *Type, err error) {
 
 func (f *File) TypeExpr(e ast.Expr) *Type {
 	// TODO: evaluate need for the following expressions:
-	// case *ast.TypeAssertExpr:
-	// case *ast.IndexExpr:
-	// case *ast.SliceExpr:
+	// *ast.IndexExpr:
+	// *ast.SliceExpr:
 	switch t := e.(type) {
 	case *ast.BasicLit:
 		// literal expression of int, float, rune, string
@@ -415,7 +414,7 @@ func (f *File) TypeExpr(e ast.Expr) *Type {
 	case *ast.BinaryExpr:
 		return f.TypeBinary(t)
 	case *ast.CallExpr:
-		return f.TypeCall(t)
+		return f.TypeExpr(t.Fun)
 	case *ast.FuncLit:
 		return f.TypeFuncLit(t)
 	case *ast.FuncType:
@@ -434,6 +433,8 @@ func (f *File) TypeExpr(e ast.Expr) *Type {
 		return f.TypeChan(t)
 	case *ast.SelectorExpr:
 		return f.TypeSelector(t)
+	case *ast.TypeAssertExpr:
+		return f.TypeExpr(t.Type)
 	}
 	fmt.Println("EXPR:", reflect.TypeOf(e))
 	return nil
@@ -444,7 +445,7 @@ func (f *File) TypeExpr(e ast.Expr) *Type {
 // and lastly inspecting the ident object if it exists.
 func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
 
-	// check builtin values, types, and funcs
+	// check builtin values, types, funcs
 	if v := BuiltinValues.Get(i.Name); v != nil {
 		return v.(*Value).typ
 	}
@@ -455,7 +456,7 @@ func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
 		return f.(*Func).typ
 	}
 
-	// check declared values, types, and funcs
+	// check declared values, types, funcs, imports
 	if v := f.p.Values.Get(i.Name); v != nil {
 		return v.(*Value).typ
 	}
@@ -465,6 +466,13 @@ func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
 	if f := f.p.Funcs.Get(i.Name); f != nil {
 		return f.(*Func).typ
 	}
+	/* if imp := f.i.Get(f.Key() + i.Name); imp != nil {
+		p := imp.(*Import).pkg
+		if !p.i && p.Parse() != nil {
+			return
+		}
+		return imp.(*Import).pkg.Types.Get(i.Name).(*Type)
+	} */
 
 	// if ident is not in types and has an object,
 	// inspect the object and return the type
@@ -493,18 +501,20 @@ func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
 
 // typePointer returns the pointer type of the type provided.
 func (f *File) typePointer(t *Type) (typ *Type) {
-	n := "*" + t.name
-	if t := f.p.Types.Get(n); t != nil {
-		return t.(*Type)
+	if t != nil {
+		n := "*" + t.name
+		if t := f.p.Types.Get(n); t != nil {
+			return t.(*Type)
+		}
+		typ = &Type{
+			file:   t.file,
+			name:   "*" + t.name,
+			kind:   POINTER,
+			object: &Pointer{elem: t},
+		}
+		typ.object.(*Pointer).typ = typ
+		f.p.Types.Add(typ)
 	}
-	typ = &Type{
-		file:   t.file,
-		name:   "*" + t.name,
-		kind:   POINTER,
-		object: &Pointer{elem: t},
-	}
-	typ.object.(*Pointer).typ = typ
-	f.p.Types.Add(typ)
 	return
 }
 
@@ -538,11 +548,6 @@ func (f *File) TypeBinary(b *ast.BinaryExpr) (typ *Type) {
 		return f.TypeExpr(x)
 	}
 	return f.TypeExpr(b.Y)
-}
-
-// TypeCall returns the type of the call expression provided.
-func (f *File) TypeCall(c *ast.CallExpr) (typ *Type) {
-	return f.TypeExpr(c.Fun)
 }
 
 // TypeFunc returns the type of the function literal provided.
@@ -744,7 +749,7 @@ func (f *File) TypeSelector(s *ast.SelectorExpr) (typ *Type) {
 	// TODO: implement selector expression
 	// if X is an import, get the type from the imported package
 	// else check types and functions in the current package
-	if i, ok := s.X.(*ast.Ident); ok && i.Obj != nil {
+	/* if i, ok := s.X.(*ast.Ident); ok && i.Obj != nil {
 		if i.Obj.Kind == ast.Pkg {
 			// get imported package if type contains a period
 			if imp := f.i.Get(i.Name); imp != nil {
@@ -763,7 +768,53 @@ func (f *File) TypeSelector(s *ast.SelectorExpr) (typ *Type) {
 			}
 			return nil
 		}
+	} */
+
+	// TODO: know if a func call or a func assigned to a variable
+
+	// TODO: convert selector to slice of idents, then walk
+	// the slice to get the end type of the selector expression.
+	// Additions: Assertion, Paren, Unary
+	//fmt.Println("EXPR:", reflect.TypeOf(s.X))
+	i := f.IdentExpr(s.X)
+
+	i = append(i, s.Sel)
+	var n string
+	for j, x := range i {
+		if j > 0 {
+			n += ":"
+		}
+		n += x.Name
 	}
-	fmt.Println("EXPR:", reflect.TypeOf(s.X), "SELECTOR:", s.Sel.Name, "OBJ:", s.Sel.Obj)
+	fmt.Println("SELC EXPR:", n)
+	//fmt.Println("EXPR:", reflect.TypeOf(s.X), "SELECTOR:", s.Sel.Name, "OBJ:", s.Sel.Obj)
+	return
+}
+
+func (f *File) IdentExpr(e ast.Expr) (i []*ast.Ident) {
+	switch x := e.(type) {
+	case *ast.Ident:
+		return []*ast.Ident{x}
+	case *ast.SelectorExpr:
+		return append(f.IdentExpr(x.X), x.Sel)
+	case *ast.ParenExpr:
+		return f.IdentExpr(x.X)
+	case *ast.StarExpr:
+		return f.IdentExpr(x.X)
+	case *ast.UnaryExpr:
+		return f.IdentExpr(x.X)
+	case *ast.CallExpr:
+		return f.IdentExpr(x.Fun)
+	case *ast.TypeAssertExpr:
+		return f.IdentExpr(x.Type)
+	case *ast.CompositeLit:
+		return f.IdentExpr(x.Type)
+	case *ast.ArrayType:
+		return f.IdentExpr(x.Elt)
+	case *ast.MapType:
+		return f.IdentExpr(x.Value)
+	case *ast.ChanType:
+		return f.IdentExpr(x.Value)
+	}
 	return
 }
