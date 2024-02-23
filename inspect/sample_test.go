@@ -19,6 +19,14 @@ import (
 	_ "testing"
 )
 
+type (
+	struct1 struct{ Bool bool }
+	struct2 struct{ Int int }
+	//fn1     func(string) (int, error)
+	String string
+)
+
+/*
 var NoType = 1
 var Values1, Values2 int = 1, 2
 var Value3 error = nil
@@ -50,7 +58,7 @@ func Func1() (string, string) {
 
 func Func2() int {
 	return 1
-}
+} */
 
 /*
 var (

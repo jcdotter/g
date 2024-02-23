@@ -96,7 +96,7 @@ func (f *File) Inspect() (err error) {
 				case token.VAR:
 					err = f.InspectValues(VAR, decl.Specs)
 				case token.TYPE:
-					err = f.InspectType(decl.Specs)
+					err = f.InspectTypes(decl.Specs)
 				case token.IMPORT:
 					err = f.InspectImports(decl.Specs)
 				}
@@ -113,7 +113,10 @@ func (f *File) InspectImports(specs []ast.Spec) (err error) {
 
 		// create and add import to file
 		i := s.(*ast.ImportSpec)
-		imp := &Import{file: f, name: i.Name.Name}
+		imp := &Import{file: f}
+		if i.Name != nil {
+			imp.name = i.Name.Name
+		}
 		f.i.Add(imp)
 
 		// get package by path if already imported another file,
@@ -224,6 +227,7 @@ func (f *File) InspectValue(k byte, v *ast.ValueSpec) (err error) {
 	return f.InspectValues(k, []ast.Spec{v})
 }
 
+// TODO: remove this after testing
 func (f *File) PrintValue(v *Value) {
 	var tname string
 	var tkind byte
@@ -239,11 +243,58 @@ func (f *File) PrintValue(v *Value) {
 	)
 }
 
-func (f *File) InspectType(t []ast.Spec) (err error) {
-	/* for _, s := range t {
-		fmt.Println("TYPE:", s.(*ast.TypeSpec).Name.Name)
-	} */
+func (f *File) InspectTypes(specs []ast.Spec) (err error) {
+
+	// iterate through specs and create types
+	// for each item in type declaration
+	for _, s := range specs {
+
+		// assert type spec
+		t := s.(*ast.TypeSpec)
+
+		// create and add type to package
+		typ := f.TypeExpr(t.Type)
+		typ.name = t.Name.Name
+		f.p.Types.Add(typ)
+
+		// print test
+		f.PrintType(typ)
+	}
+
 	return
+}
+
+func (f *File) InspectType(t *ast.TypeSpec) (err error) {
+	return f.InspectTypes([]ast.Spec{t})
+}
+
+// TODO: remove this after testing
+func (f *File) PrintType(t *Type) {
+	var objelem string
+	var objlen int
+	if t.object != nil {
+		switch t.kind {
+		case ARRAY:
+			objelem = t.object.(*Array).elem.name
+			objlen = t.object.(*Array).len
+		case CHAN:
+			objelem = t.object.(*Chan).elem.name
+		case POINTER:
+			objelem = t.object.(*Pointer).elem.name
+		case MAP:
+			objelem = t.object.(*Map).elem.name + ":" + t.object.(*Map).elem.name
+		case STRUCT:
+			objlen = t.object.(*Struct).fields.Len()
+		case INTERFACE:
+			objlen = t.object.(*Interface).methods.Len()
+		}
+	}
+	fmt.Println("TYPE:",
+		t.name,
+		t.kind,
+		objelem,
+		objlen,
+	)
 }
 
 func (f *File) InspectFunc(fn *ast.FuncDecl) (err error) {
@@ -304,10 +355,6 @@ func (f *File) GetType(name string) (typ *Type, err error) {
 }
 
 func (f *File) TypeExpr(e ast.Expr) *Type {
-
-	// TODO: build out expression type evaluation
-	// using the expresssion list below
-
 	switch t := e.(type) {
 	case *ast.BasicLit:
 		// literal expression of int, float, rune, string
@@ -327,64 +374,29 @@ func (f *File) TypeExpr(e ast.Expr) *Type {
 	case *ast.FuncLit:
 		return f.TypeFunc(t)
 	case *ast.CompositeLit:
-		switch c := t.Type.(type) {
-		case *ast.Ident:
-			return f.TypeIdent(c)
-		case *ast.SelectorExpr:
-			// TODO: return f.TypeSelector(c)
-		case *ast.ArrayType:
-			return f.TypeArray(c)
-		case *ast.MapType:
-			return f.TypeMap(c)
-		case *ast.StructType:
-			return f.TypeStruct(c)
-		}
+		return f.TypeExpr(t.Type)
+	case *ast.ArrayType:
+		return f.TypeArray(t)
+	case *ast.MapType:
+		return f.TypeMap(t)
+	case *ast.StructType:
+		return f.TypeStruct(t)
+	case *ast.InterfaceType:
+		return f.TypeIterface(t)
+	case *ast.ChanType:
+		return f.TypeChan(t)
 	case *ast.SelectorExpr:
-		// call to an external package function, value or type
-		// or call to internal package method or struct field
+		return f.TypeSelector(t)
+	case *ast.FuncType:
+		// TODO: implement function type
 	default:
+		// TODO: evaluate the following expressions
 		// case *ast.TypeAssertExpr:
 		// case *ast.IndexExpr:
 		// case *ast.SliceExpr:
 	}
 	fmt.Println("EXPR:", reflect.TypeOf(e))
 	return nil
-
-	/* switch t := v.Values[0].(type) {
-	case *ast.TypeAssertExpr:
-		// TODO: evaluate type assert expression
-	case *ast.Ident:
-		val.typ = TypeToken(token.IDENT)
-	case *ast.BasicLit:
-		val.typ = TypeToken(t.Kind)
-	case *ast.UnaryExpr:
-		// TODO: evaluate unary expression (&, *, etc.)
-	case *ast.BinaryExpr:
-		// TODO: evaluate binary expression
-	case *ast.CallExpr:
-		// TODO: evaluate call expression
-	case *ast.FuncLit:
-		// TODO: evaluate function literal
-	case *ast.CompositeLit:
-		switch t.Type.(type) {
-		case *ast.Ident:
-			val.typ = TypeToken(token.IDENT)
-		case *ast.SelectorExpr:
-			// TODO: evaluate selector expression
-		case *ast.ArrayType:
-			// TODO: evaluate array type
-		case *ast.MapType:
-			// TODO: evaluate map type
-		case *ast.StructType:
-			// TODO: evaluate struct type
-		case *ast.InterfaceType:
-			// TODO: evaluate interface type
-		case *ast.ChanType:
-			// TODO: evaluate chan type
-		default:
-			// TODO: check for other types
-		}
-	} */
 }
 
 // TypeIdent returns the type of the identifier in the file
@@ -413,7 +425,7 @@ func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
 				return f.p.Values.Get(i.Name).(*Value).typ
 			}
 		case ast.Typ:
-			if err := f.InspectType([]ast.Spec{i.Obj.Decl.(*ast.TypeSpec)}); err == nil {
+			if err := f.InspectType(i.Obj.Decl.(*ast.TypeSpec)); err == nil {
 				return f.p.Types.Get(i.Name).(*Type)
 			}
 		case ast.Fun:
@@ -546,13 +558,132 @@ func (f *File) TypeMap(m *ast.MapType) (typ *Type) {
 
 // TypeStruct returns the type of the struct expression provided.
 func (f *File) TypeStruct(s *ast.StructType) (typ *Type) {
+
+	// set up struct type
 	typ = &Type{
 		file: f,
 		kind: STRUCT,
 	}
 	str := NewStruct(typ)
 	typ.object = str
-	// TODO: loop fields and add them to the struct
-	// if field is func, add as method, else add as field
+
+	// loop fields and add them to the struct
+	if s.Fields != nil {
+		offset := 0
+		for _, field := range s.Fields.List {
+
+			// type and tag are at a field scoping level
+			// and may apply to multiple field names
+			ftyp := f.TypeExpr(field.Type)
+			ftag := ""
+			if field.Tag != nil {
+				ftag = field.Tag.Value
+			}
+
+			// add field to struct
+			for _, n := range field.Names {
+				str.fields.Add(&Field{
+					name:   n.Name,
+					of:     typ,
+					typ:    ftyp,
+					tag:    ftag,
+					offset: offset,
+				})
+				offset++
+			}
+		}
+	}
+	return
+}
+
+// TypeIterface returns the type of the interface expression provided.
+func (f *File) TypeIterface(i *ast.InterfaceType) (typ *Type) {
+
+	// if the interface has no methods,
+	// return an empty interface
+	if i.Methods == nil {
+		return BuiltinTypes.List()[INTERFACE].(*Type)
+	}
+
+	// set up interface type and add methods
+	intr := &Interface{methods: data.Make[*Func](i.Methods.NumFields())}
+	typ = &Type{
+		file:   f,
+		kind:   INTERFACE,
+		object: intr,
+	}
+	intr.typ = typ
+	for _, field := range i.Methods.List {
+
+		// skip if the interface method has no name
+		if field.Names == nil {
+			continue
+		}
+
+		// if interface field is a func, add it to the interface
+		if t := f.TypeExpr(field.Type); t != nil && t.kind == FUNC {
+
+			// build method inputs
+			var in *data.Data
+			if p := field.Type.(*ast.FuncType).Params; p != nil {
+				in = data.Make[*Type](len(p.List))
+				f.TypeFuncParams(p, in)
+			}
+
+			// build method outputs
+			var out *data.Data
+			if p := field.Type.(*ast.FuncType).Results; p != nil {
+				out = data.Make[*Type](len(p.List))
+				f.TypeFuncParams(p, out)
+			}
+
+			// add method to interface
+			for _, n := range field.Names {
+				intr.methods.Add(&Func{
+					file: f,
+					name: n.Name,
+					typ:  t,
+					of:   typ,
+					in:   in,
+					out:  out,
+				})
+			}
+		}
+	}
+
+	return
+}
+
+// TypeChan returns the type of the chan expression provided.
+func (f *File) TypeChan(c *ast.ChanType) (typ *Type) {
+	cn := &Chan{
+		elem: f.TypeExpr(c.Value),
+		dir:  byte(c.Dir),
+	}
+	typ = &Type{
+		file:   f,
+		kind:   CHAN,
+		object: cn,
+	}
+	cn.typ = typ
+	switch cn.dir {
+	case SEND:
+		typ.name = "chan<- " + cn.elem.name
+	case RECV:
+		typ.name = "<-chan " + cn.elem.name
+	default:
+		typ.name = "chan " + cn.elem.name
+	}
+	return
+}
+
+// TypeSelector returns the type of the selector expression provided.
+// Typically used for call to an external package function, value or
+// type or call to internal package method or struct field
+func (f *File) TypeSelector(s *ast.SelectorExpr) (typ *Type) {
+	// TODO: implement selector expression
+	// if X is an import, get the type from the imported package
+	// else check types and functions in the current package
+	fmt.Println("EXPR:", reflect.TypeOf(s.X), "SELECTOR:", s.Sel.Name, "OBJ:", s.Sel.Obj)
 	return
 }

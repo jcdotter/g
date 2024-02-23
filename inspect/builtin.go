@@ -84,6 +84,13 @@ const (
 	// FUNC = 18 above
 )
 
+// chan direction kind
+const (
+	NONE byte = iota + 60
+	SEND
+	RECV
+)
+
 // -----------------------------------------------------------------------------
 // BUILTINS
 // implements the standard builtin types and functions
