@@ -212,6 +212,11 @@ func init() {
 	for _, v := range BuiltinValues.List() {
 		v.(*Value).typ = types[v.(*Value).kind].(*Type)
 	}
+	// add types to buildin funcs
+	for _, el := range BuiltinFuncs.List() {
+		f := el.(*Func)
+		f.typ = &Type{file: BuiltinFile, name: f.name, kind: FUNC, object: f}
+	}
 }
 
 func TypeToken(t token.Token) *Type {

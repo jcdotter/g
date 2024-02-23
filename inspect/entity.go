@@ -232,5 +232,8 @@ type Func struct {
 
 // data.Elem interface method
 func (f *Func) Key() string {
+	if f.of != nil {
+		return f.of.name + "." + f.name
+	}
 	return f.name
 }

@@ -17,14 +17,18 @@ package inspect
 import (
 	_ "strings"
 	_ "testing"
+
+	"github.com/jcdotter/go/data"
 )
 
-type (
+/* type (
 	struct1 struct{ Bool bool }
 	struct2 struct{ Int int }
-	//fn1     func(string) (int, error)
-	String string
-)
+	fn1     func(string) (int, error)
+	String  string
+) */
+
+var N = data.IndexMin
 
 /*
 var NoType = 1

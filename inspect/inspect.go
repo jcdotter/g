@@ -179,11 +179,15 @@ func (f *File) InspectValues(k byte, specs []ast.Spec) (err error) {
 		// is function call, store the output types
 		// to be applied to the ValueSpec.Values
 		var types []*Type
-		if typ == nil && num > 1 && len(vals.Values) == 1 {
+		if typ == nil && len(vals.Values) == 1 {
 			types = make([]*Type, num)
-			if t := f.TypeExpr(vals.Values[0]); t != nil && t.kind == FUNC && t.object != nil {
-				for i, t := range t.object.(*Func).out.List() {
-					types[i] = t.(*Type)
+			if typ = f.TypeExpr(vals.Values[0]); typ != nil && typ.kind == FUNC && typ.object != nil {
+				if f := typ.object.(*Func); f.out.Len() == 1 {
+					typ = f.out.Index(0).(*Type)
+				} else {
+					for i, t := range typ.object.(*Func).out.List() {
+						types[i] = t.(*Type)
+					}
 				}
 			}
 		}
@@ -214,6 +218,7 @@ func (f *File) InspectValues(k byte, specs []ast.Spec) (err error) {
 				val.typ = types[i]
 			case len(vals.Values) > i:
 				val.typ = f.TypeExpr(vals.Values[i])
+
 			}
 
 			// TODO: remove this after testing
@@ -254,6 +259,11 @@ func (f *File) InspectTypes(specs []ast.Spec) (err error) {
 		// assert type spec
 		t := s.(*ast.TypeSpec)
 
+		// skip if type already exists
+		if f.p.Types.Get(t.Name.Name) != nil {
+			continue
+		}
+
 		// create and add type to package
 		typ := f.TypeExpr(t.Type)
 		typ.name = t.Name.Name
@@ -290,6 +300,8 @@ func (f *File) PrintType(t *Type) {
 			objlen = t.object.(*Struct).fields.Len()
 		case INTERFACE:
 			objlen = t.object.(*Interface).methods.Len()
+		case FUNC:
+			objlen = t.object.(*Func).in.Len() + t.object.(*Func).out.Len()
 		}
 	}
 	fmt.Println("TYPE:",
@@ -301,8 +313,33 @@ func (f *File) PrintType(t *Type) {
 }
 
 func (f *File) InspectFunc(fn *ast.FuncDecl) (err error) {
-	// TODO: implement function inspection
-	//fmt.Println("FUNC DECL:", fn.Name.Name)
+
+	// set up function type
+	var fnc *Func
+	if typ := f.TypeFunc(fn.Type); typ != nil {
+		fnc := typ.object.(*Func)
+		fnc.name = fn.Name.Name
+	} else {
+		return ErrInvalidEntity
+	}
+
+	// if received has one identifier, inspect
+	// the receiver, add it to the function, and
+	// add the function as a method to the receiver
+	if fn.Recv != nil {
+		if len(fn.Recv.List) == 1 {
+			if i := fn.Recv.List[0].Names; len(i) == 1 {
+				if rtyp := f.TypeExpr(fn.Recv.List[0].Type); rtyp != nil {
+					fnc.of = rtyp
+					rtyp.object.(*Struct).methods.Add(fnc)
+				}
+			}
+		}
+	}
+
+	// add function to package
+	f.p.Funcs.Add(fnc)
+
 	return
 }
 
@@ -359,6 +396,10 @@ func (f *File) GetType(name string) (typ *Type, err error) {
 }
 
 func (f *File) TypeExpr(e ast.Expr) *Type {
+	// TODO: evaluate need for the following expressions:
+	// case *ast.TypeAssertExpr:
+	// case *ast.IndexExpr:
+	// case *ast.SliceExpr:
 	switch t := e.(type) {
 	case *ast.BasicLit:
 		// literal expression of int, float, rune, string
@@ -376,6 +417,8 @@ func (f *File) TypeExpr(e ast.Expr) *Type {
 	case *ast.CallExpr:
 		return f.TypeCall(t)
 	case *ast.FuncLit:
+		return f.TypeFuncLit(t)
+	case *ast.FuncType:
 		return f.TypeFunc(t)
 	case *ast.CompositeLit:
 		return f.TypeExpr(t.Type)
@@ -391,13 +434,6 @@ func (f *File) TypeExpr(e ast.Expr) *Type {
 		return f.TypeChan(t)
 	case *ast.SelectorExpr:
 		return f.TypeSelector(t)
-	case *ast.FuncType:
-		// TODO: implement function type
-	default:
-		// TODO: evaluate the following expressions
-		// case *ast.TypeAssertExpr:
-		// case *ast.IndexExpr:
-		// case *ast.SliceExpr:
 	}
 	fmt.Println("EXPR:", reflect.TypeOf(e))
 	return nil
@@ -408,12 +444,26 @@ func (f *File) TypeExpr(e ast.Expr) *Type {
 // and lastly inspecting the ident object if it exists.
 func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
 
-	// check builtin values and parsed types
+	// check builtin values, types, and funcs
 	if v := BuiltinValues.Get(i.Name); v != nil {
 		return v.(*Value).typ
 	}
-	if typ, _ = f.GetType(i.Name); typ != nil {
-		return
+	if t := BuiltinTypes.Get(i.Name); t != nil {
+		return t.(*Type)
+	}
+	if f := BuiltinFuncs.Get(i.Name); f != nil {
+		return f.(*Func).typ
+	}
+
+	// check declared values, types, and funcs
+	if v := f.p.Values.Get(i.Name); v != nil {
+		return v.(*Value).typ
+	}
+	if t := f.p.Types.Get(i.Name); t != nil {
+		return t.(*Type)
+	}
+	if f := f.p.Funcs.Get(i.Name); f != nil {
+		return f.(*Func).typ
 	}
 
 	// if ident is not in types and has an object,
@@ -496,7 +546,8 @@ func (f *File) TypeCall(c *ast.CallExpr) (typ *Type) {
 }
 
 // TypeFunc returns the type of the function literal provided.
-func (f *File) TypeFunc(fn *ast.FuncLit) (typ *Type) {
+// Typically used for assigning a function literal to a variable.
+func (f *File) TypeFuncLit(fn *ast.FuncLit) (typ *Type) {
 	// TODO: implement function literal as a function in the package.
 	// currently only stored as a value in the package.
 	fnc := &Func{file: f}
@@ -511,12 +562,39 @@ func (f *File) TypeFunc(fn *ast.FuncLit) (typ *Type) {
 	return
 }
 
+// TypeFunc returns the type of the function expression provided.
+func (f *File) TypeFunc(fn *ast.FuncType) (typ *Type) {
+
+	// set up function type
+	fnc := &Func{
+		file: f,
+		in:   data.Make[*Type](4),
+		out:  data.Make[*Type](4),
+	}
+	typ = &Type{
+		file:   f,
+		kind:   FUNC,
+		object: fnc,
+	}
+	fnc.typ = typ
+
+	// build and add func inputs and outputs
+	f.TypeFuncParams(fn.Params, fnc.in)
+	f.TypeFuncParams(fn.Results, fnc.out)
+
+	return
+}
+
 // TypeFuncParams adds the type of the function
 // parameters provided to the data list provided.
 func (f *File) TypeFuncParams(from *ast.FieldList, to *data.Data) {
 	if from != nil {
 		for _, field := range from.List {
 			t := f.TypeExpr(field.Type)
+			if len(field.Names) == 0 {
+				to.Add(t)
+				continue
+			}
 			for range field.Names {
 				to.Add(t)
 			}
@@ -620,37 +698,15 @@ func (f *File) TypeIterface(i *ast.InterfaceType) (typ *Type) {
 	for _, field := range i.Methods.List {
 
 		// skip if the interface method has no name
-		if field.Names == nil {
+		if len(field.Names) == 0 {
 			continue
 		}
 
 		// if interface field is a func, add it to the interface
 		if t := f.TypeExpr(field.Type); t != nil && t.kind == FUNC {
-
-			// build method inputs
-			var in *data.Data
-			if p := field.Type.(*ast.FuncType).Params; p != nil {
-				in = data.Make[*Type](len(p.List))
-				f.TypeFuncParams(p, in)
-			}
-
-			// build method outputs
-			var out *data.Data
-			if p := field.Type.(*ast.FuncType).Results; p != nil {
-				out = data.Make[*Type](len(p.List))
-				f.TypeFuncParams(p, out)
-			}
-
-			// add method to interface
-			for _, n := range field.Names {
-				intr.methods.Add(&Func{
-					file: f,
-					name: n.Name,
-					typ:  t,
-					of:   typ,
-					in:   in,
-					out:  out,
-				})
+			if ftyp := f.TypeFunc(field.Type.(*ast.FuncType)); ftyp != nil {
+				ftyp.object.(*Func).name = field.Names[0].Name
+				intr.methods.Add(ftyp)
 			}
 		}
 	}
@@ -688,6 +744,26 @@ func (f *File) TypeSelector(s *ast.SelectorExpr) (typ *Type) {
 	// TODO: implement selector expression
 	// if X is an import, get the type from the imported package
 	// else check types and functions in the current package
+	if i, ok := s.X.(*ast.Ident); ok && i.Obj != nil {
+		if i.Obj.Kind == ast.Pkg {
+			// get imported package if type contains a period
+			if imp := f.i.Get(i.Name); imp != nil {
+				i := imp.(*Import)
+				// get type from imported package
+				t := i.pkg.Types.Get(s.Sel.Name)
+				if t == nil {
+					if err := i.pkg.Parse(); err != nil {
+						return
+					}
+					t = i.pkg.Types.Get(s.Sel.Name)
+				}
+				if t != nil {
+					return t.(*Type)
+				}
+			}
+			return nil
+		}
+	}
 	fmt.Println("EXPR:", reflect.TypeOf(s.X), "SELECTOR:", s.Sel.Name, "OBJ:", s.Sel.Obj)
 	return
 }
