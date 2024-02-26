@@ -19,6 +19,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -466,13 +467,15 @@ func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
 	if f := f.p.Funcs.Get(i.Name); f != nil {
 		return f.(*Func).typ
 	}
-	/* if imp := f.i.Get(f.Key() + i.Name); imp != nil {
+	if imp := f.i.Get(i.Name); imp != nil {
 		p := imp.(*Import).pkg
 		if !p.i && p.Parse() != nil {
 			return
 		}
-		return imp.(*Import).pkg.Types.Get(i.Name).(*Type)
-	} */
+		// TODO: need a Type and Kind of Package to be returned here
+		// so the package can be used to search a selector or index expression
+		return p.Types.Get(i.Name).(*Type)
+	}
 
 	// if ident is not in types and has an object,
 	// inspect the object and return the type
@@ -771,23 +774,52 @@ func (f *File) TypeSelector(s *ast.SelectorExpr) (typ *Type) {
 	} */
 
 	// TODO: know if a func call or a func assigned to a variable
+	// TODO: could have in indexExpr rather than selectorExpr
 
-	// TODO: convert selector to slice of idents, then walk
-	// the slice to get the end type of the selector expression.
-	// Additions: Assertion, Paren, Unary
-	//fmt.Println("EXPR:", reflect.TypeOf(s.X))
-	i := f.IdentExpr(s.X)
+	idents := append(f.IdentExpr(s.X), s.Sel)
+	f.PrintSelector(idents) // TODO: remove
+	// TODO: update to return external package as a type
+	// add *Package case to TypeIndentKey() to drill on package selector expr
+	typ = f.TypeIdent(idents[0])
+	if typ == nil {
+		os.Exit(1)
+	}
+	for i := 1; i < len(idents); i++ {
+		typ = f.TypeIdentKey(typ, idents[i].Name)
+	}
+	return
+}
 
-	i = append(i, s.Sel)
+// TODO: remove
+func (f *File) PrintSelector(i []*ast.Ident) {
 	var n string
 	for j, x := range i {
 		if j > 0 {
 			n += ":"
 		}
 		n += x.Name
+		if x.Obj != nil && x.Obj.Decl != nil {
+			n += "(" + reflect.TypeOf(x.Obj.Decl).String() + ")"
+		}
 	}
 	fmt.Println("SELC EXPR:", n)
-	//fmt.Println("EXPR:", reflect.TypeOf(s.X), "SELECTOR:", s.Sel.Name, "OBJ:", s.Sel.Obj)
+}
+
+func (f *File) TypeIdentKey(t *Type, key string) (typ *Type) {
+	if t != nil && t.object != nil {
+		switch t := t.object.(type) {
+		case *Struct:
+			return t.fields.Get(key).(*Field).typ
+		case *Func:
+			i := &ast.Ident{Name: t.out.Index(0).Key()}
+			tt := f.TypeIdent(i)
+			return f.TypeIdentKey(tt, key)
+		case *Map:
+			return t.elem
+		case *Array:
+			return t.elem
+		}
+	}
 	return
 }
 

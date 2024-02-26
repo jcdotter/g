@@ -51,16 +51,21 @@ var A = S{X: "string"}
 var B = T{X: "string", Y: A}
 var C = func() T { return B }
 
+func D() T { return B }
+
+var X = A.X
 var N = data.IndexMin
-var X = (&B).X
-var Y = (C()).X
-var Z = C().Y.X
+
+/*
 var W = B.C()
+var X = (&B).X
+var Y = (D()).X
+var Z = C().Y.X
 var V = B.C().(S).X
 
 var O = (func() S { return S{X: "string"} })().X
 
-var M *data.Data
+var M *data.Data */
 
 /*
 var NoType = 1

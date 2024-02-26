@@ -130,7 +130,7 @@ type Import struct {
 
 // data.Elem interface method
 func (i *Import) Key() string {
-	return i.file.Key() + i.name
+	return i.name
 }
 
 // Name returns the import name.
