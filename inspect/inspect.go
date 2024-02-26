@@ -19,7 +19,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -33,16 +32,26 @@ import (
 // the package cannot be parsed.
 func Inspect(PkgPath string) (*Package, error) {
 	p := NewPackage(PkgPath)
-	if err := p.Parse(); err != nil {
+	if err := p.Inspect(); err != nil {
 		return nil, err
 	}
+	return p, nil
+}
+
+// Inspect parses the package content and
+// returns the package object for inspection, or an error if
+// the package cannot be parsed.
+func (p *Package) Inspect() (err error) {
+	if err = p.Parse(); err != nil {
+		return
+	}
 	for _, f := range p.Files.List() {
-		if err := f.(*File).Inspect(); err != nil {
-			return nil, err
+		if err = f.(*File).Inspect(); err != nil {
+			return
 		}
 	}
 	p.i = true
-	return p, nil
+	return
 }
 
 // Parse parses the package content if not already parsed. If Entites are provided,
@@ -50,7 +59,7 @@ func Inspect(PkgPath string) (*Package, error) {
 // parse all entities in the package. Returns an error if the package cannot be parsed.
 func (p *Package) Parse() (err error) {
 	// TODO: Make file parsing concurrent.
-
+	fmt.Println("PARSING PACKAGE:", p.Path)
 	// parse each file in the package
 	for _, f := range path.Files(p.Path) {
 		var file *File
@@ -77,6 +86,40 @@ func (p *Package) Parse() (err error) {
 	if p.Files.Len() > 0 {
 		p.Name = p.Files.Index(0).(*File).t.Name.Name
 	}
+	return
+}
+
+// TypeIdent returns the type of the identifier in the package
+func (p *Package) TypeIdent(ident string) (typ *Type) {
+	fmt.Println("PACKAGE IDENT:", ident)
+	fmt.Println(
+		"PKG NAME:", p.Name,
+		"PKG PATH:", p.Path,
+	)
+	// parse if package has not been parsed
+	if !p.i && p.Inspect() != nil {
+		return
+	}
+	fmt.Println(
+		"PKG NAME:", p.Name,
+		"PKG PATH:", p.Path,
+		"PKG FILES:", p.Files.Len(),
+		"PKG VALUES:", p.Values.Len(),
+		"PKG TYPES:", p.Types.Len(),
+		"PKG FUNCS:", p.Funcs.Len(),
+	)
+	// check declared values, types, funcs for ident
+	if v := p.Values.Get(ident); v != nil {
+		fmt.Println("PACKAGE IDENT VALUE:", ident)
+		return v.(*Value).typ
+	}
+	if t := p.Types.Get(ident); t != nil {
+		return t.(*Type)
+	}
+	if f := p.Funcs.Get(ident); f != nil {
+		return f.(*Func).typ
+	}
+	fmt.Println("COULD NOT FUND PACKAGE IDENT")
 	return
 }
 
@@ -116,15 +159,16 @@ func (f *File) InspectImports(specs []ast.Spec) (err error) {
 		// create and add import to file
 		i := s.(*ast.ImportSpec)
 		imp := &Import{file: f}
+		pkgPath := i.Path.Value
 		if i.Name != nil {
 			imp.name = i.Name.Name
+		} else {
+			imp.name = pkgPath[strings.LastIndex(pkgPath, "/")+1 : len(pkgPath)-1]
 		}
 		f.i.Add(imp)
-
 		// get package by path if already imported another file,
 		// otherwise create a new imported package and add it to
 		// the current package
-		pkgPath := i.Path.Value
 		if pkg := f.p.Imports.Get(pkgPath); pkg != nil {
 			imp.pkg = pkg.(*Package)
 		} else {
@@ -132,6 +176,7 @@ func (f *File) InspectImports(specs []ast.Spec) (err error) {
 			f.p.Imports.Add(imp.pkg)
 		}
 	}
+	fmt.Println(f.i.Len())
 	return
 }
 
@@ -457,7 +502,7 @@ func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
 		return f.(*Func).typ
 	}
 
-	// check declared values, types, funcs, imports
+	// check declared values, types, funcs
 	if v := f.p.Values.Get(i.Name); v != nil {
 		return v.(*Value).typ
 	}
@@ -467,14 +512,20 @@ func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
 	if f := f.p.Funcs.Get(i.Name); f != nil {
 		return f.(*Func).typ
 	}
+
+	// if ident is an import, parse the imported package
+	// and return teh imported package as a type
 	if imp := f.i.Get(i.Name); imp != nil {
 		p := imp.(*Import).pkg
-		if !p.i && p.Parse() != nil {
+		if !p.i && p.Inspect() != nil {
 			return
 		}
-		// TODO: need a Type and Kind of Package to be returned here
-		// so the package can be used to search a selector or index expression
-		return p.Types.Get(i.Name).(*Type)
+		return &Type{
+			file:   f,
+			kind:   PACKAGE,
+			name:   imp.(*Import).name,
+			object: p,
+		}
 	}
 
 	// if ident is not in types and has an object,
@@ -778,14 +829,11 @@ func (f *File) TypeSelector(s *ast.SelectorExpr) (typ *Type) {
 
 	idents := append(f.IdentExpr(s.X), s.Sel)
 	f.PrintSelector(idents) // TODO: remove
-	// TODO: update to return external package as a type
-	// add *Package case to TypeIndentKey() to drill on package selector expr
-	typ = f.TypeIdent(idents[0])
-	if typ == nil {
-		os.Exit(1)
-	}
-	for i := 1; i < len(idents); i++ {
-		typ = f.TypeIdentKey(typ, idents[i].Name)
+	if typ = f.TypeIdent(idents[0]); typ != nil {
+		for i := 1; i < len(idents); i++ {
+			typ = f.TypeIdentKey(typ, idents[i].Name)
+			fmt.Println(reflect.TypeOf(typ.object)) // TODO: remove
+		}
 	}
 	return
 }
@@ -810,6 +858,8 @@ func (f *File) TypeIdentKey(t *Type, key string) (typ *Type) {
 		switch t := t.object.(type) {
 		case *Struct:
 			return t.fields.Get(key).(*Field).typ
+		case *Package:
+			return t.TypeIdent(key)
 		case *Func:
 			i := &ast.Ident{Name: t.out.Index(0).Key()}
 			tt := f.TypeIdent(i)
