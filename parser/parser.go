@@ -18,14 +18,15 @@ import (
 	"strconv"
 )
 
-// object: series of (key, value) pairs
-// list: series of values
-// key: series of characters
-// value: series of characters
-// keywords
+// Parser is a library of utilities for parsing []byte
 
-// Statndard Items
-// comment, whitestpace, string, number, boolean, null
+// TODO:
+// robust testing
+// add parsers for:
+//   - object: series of (key, value) pairs
+//   - list: series of values
+//   - key: series of characters
+//   - value: series of characters
 
 // ----------------------------------------------------------------------------
 // CONDITIONAL STATEMENTS
@@ -54,6 +55,10 @@ func condOp(op []byte) byte {
 	panic("invalid operator")
 }
 
+func cond(c bool, at, l int) (bool, int) {
+	return c, at + l*BoolToInt(c)
+}
+
 // Cond returns a Condition with a value and an operator
 // if no operator is provided, the Condition operator is =.
 // Operators: (=, !, <, >, <=, >=).
@@ -61,17 +66,17 @@ func condOp(op []byte) byte {
 func Cond(val byte, op ...byte) (c Condition) {
 	switch condOp(op) {
 	case 0:
-		return func(in []byte, at int) (ok bool, end int) { return val == in[at], at + 1 }
+		return func(in []byte, at int) (ok bool, end int) { return cond(val == in[at], at, 1) }
 	case 1:
-		return func(in []byte, at int) (ok bool, end int) { return val != in[at], at + 1 }
+		return func(in []byte, at int) (ok bool, end int) { return cond(val != in[at], at, 1) }
 	case 2:
-		return func(in []byte, at int) (ok bool, end int) { return val < in[at], at + 1 }
+		return func(in []byte, at int) (ok bool, end int) { return cond(val < in[at], at, 1) }
 	case 3:
-		return func(in []byte, at int) (ok bool, end int) { return val > in[at], at + 1 }
+		return func(in []byte, at int) (ok bool, end int) { return cond(val > in[at], at, 1) }
 	case 4:
-		return func(in []byte, at int) (ok bool, end int) { return val <= in[at], at + 1 }
+		return func(in []byte, at int) (ok bool, end int) { return cond(val <= in[at], at, 1) }
 	case 5:
-		return func(in []byte, at int) (ok bool, end int) { return val >= in[at], at + 1 }
+		return func(in []byte, at int) (ok bool, end int) { return cond(val >= in[at], at, 1) }
 	}
 	return
 }
@@ -91,27 +96,27 @@ func CondString(val string, op ...byte) (c Condition) {
 	switch condOp(op) {
 	case 0:
 		return func(in []byte, at int) (ok bool, end int) {
-			return val == string(in[at:at+l]), at + l
+			return cond(canExistString(val, in, at) && val == string(in[at:at+l]), at, l)
 		}
 	case 1:
 		return func(in []byte, at int) (ok bool, end int) {
-			return val != string(in[at:at+l]), at + l
+			return cond(canExistString(val, in, at) && val != string(in[at:at+l]), at, l)
 		}
 	case 2:
 		return func(in []byte, at int) (ok bool, end int) {
-			return val < string(in[at:at+l]), at + l
+			return cond(canExistString(val, in, at) && val < string(in[at:at+l]), at, l)
 		}
 	case 3:
 		return func(in []byte, at int) (ok bool, end int) {
-			return val > string(in[at:at+l]), at + l
+			return cond(canExistString(val, in, at) && val > string(in[at:at+l]), at, l)
 		}
 	case 4:
 		return func(in []byte, at int) (ok bool, end int) {
-			return val <= string(in[at:at+l]), at + l
+			return cond(canExistString(val, in, at) && val <= string(in[at:at+l]), at, l)
 		}
 	case 5:
 		return func(in []byte, at int) (ok bool, end int) {
-			return val >= string(in[at:at+l]), at + l
+			return cond(canExistString(val, in, at) && val >= string(in[at:at+l]), at, l)
 		}
 	}
 	return
@@ -186,9 +191,11 @@ type Parser func(in []byte, at int) (item []byte, end int)
 // item represents a parsable item where parsing begins when a pre-check
 // is met and ends when a post-check is met.
 type item struct {
-	pre  Condition // syntax pre check Conditions: how to find the item
-	post Condition // syntax post check Conditions: how to end the item
-	encl []item    // enclosed items: items to be escaped/skipped if found
+	pre      Condition                              // syntax pre check Conditions: how to find the item
+	post     Condition                              // syntax post check Conditions: how to end the item
+	encl     []item                                 // enclosed items: items to be escaped/skipped if found
+	precall  func(i *item, in []byte, at int) error // pre-call function called on pre-check success
+	postcall func(i *item, in []byte, at int) error // post-call function called on post-check success
 }
 
 // Item returns a new parsable item with pre and post checks
@@ -200,7 +207,7 @@ func Item(pre, post Condition, encl ...item) (i item) {
 // Exists returns true if the item prefix condition
 // is true in the provided []byte  at the specified
 // position, otherwise it returns false.
-func (i item) Exists(in []byte, at int) (ok bool, end int) {
+func (i *item) Exists(in []byte, at int) (ok bool, end int) {
 	return i.pre(in, at)
 }
 
@@ -208,7 +215,7 @@ func (i item) Exists(in []byte, at int) (ok bool, end int) {
 // in the provided []byte at or after the specified
 // position. If the item prefix does not exist, the
 // returns -1.
-func (i item) Search(in []byte, at int) int {
+func (i *item) Search(in []byte, at int) int {
 	for at < len(in) {
 		if ok, _ := i.pre(in, at); ok {
 			return at
@@ -229,18 +236,23 @@ func (i item) Search(in []byte, at int) int {
 // specified position. If the item exists, the function
 // returns the item and the position after the item, otherwise
 // it returns nil and the original position.
-func (i item) Parse(in []byte, at int) (out []byte, end int) {
+func (i *item) Parse(in []byte, at int) (out []byte, end int) {
 	var ok bool
 	if ok, end = i.pre(in, at); ok {
+		i.execPrecall(in, at)
+		at = end
 		for end < len(in) {
+			if ok, n := i.post(in, end); ok {
+				out = in[at:end]
+				i.execPostcall(in, n)
+				end = n
+				return
+			}
 			for _, j := range i.encl {
 				if _, n := j.Parse(in, end); n > end {
 					end = n
 					goto next
 				}
-			}
-			if ok, _ = i.post(in, end); ok {
-				return in[at:end], end
 			}
 			end++
 		next:
@@ -249,14 +261,46 @@ func (i item) Parse(in []byte, at int) (out []byte, end int) {
 	return nil, at
 }
 
+func (i *item) execPrecall(in []byte, at int) error {
+	if i.precall != nil {
+		return i.precall(i, in, at)
+	}
+	return nil
+}
+
+func (i *item) execPostcall(in []byte, at int) error {
+	if i.postcall != nil {
+		return i.postcall(i, in, at)
+	}
+	return nil
+}
+
 // ----------------------------------------------------------------------------
 // ITEM LIBRARY
 
 var (
-	GoComment      = Item(CondString("//"), Cond('\n'))
-	GoBlockComment = Item(CondString("/*"), CondString("*/"))
-	// GoStringLit
-	// GoString
+	CommentItem      = Item(CondString("//"), Cond('\n'))
+	BlockCommentItem = Item(CondString("/*"), CondString("*/"))
+	StringItem       = item{
+		pre: IsQuote,
+		precall: func(i *item, in []byte, at int) error {
+			q := in[at]
+			i.post = func(in []byte, at int) (ok bool, end int) {
+				return cond(in[at] == q && in[at-1] != '\\', at, 1)
+			}
+			return nil
+		},
+	}
+	ModuleItem = Item(
+		CondString("module "),                               // precheck
+		OR(NOT(IsChar), CondString("//"), CondString("/*")), // postcheck
+		CommentItem, BlockCommentItem, StringItem, // enclosed items
+	)
+	VersionItem = Item(
+		CondString("version "),                              // precheck
+		OR(NOT(IsChar), CondString("//"), CondString("/*")), // postcheck
+		CommentItem, BlockCommentItem, StringItem, // enclosed items
+	)
 )
 
 // ----------------------------------------------------------------------------
@@ -268,6 +312,9 @@ func isAlpha(b byte) bool                   { return (b > 0x40 && b < 0x5b) || (
 func isAlphamNum(b byte) bool               { return isAlpha(b) || isNum(b) }
 func isQuote(b byte) bool                   { return b == 0x22 || b == 0x27 || b == 0x60 }
 func canExist(item, in []byte, at int) bool { return len(item) != 0 && len(item) <= len(in)-at }
+func canExistString(item string, in []byte, at int) bool {
+	return len(item) != 0 && len(item) <= len(in)-at
+}
 
 // IsChar checks if in byte at the specified position in the provided
 // []byte is a non-whitspace ('\r','\n','\t',' ') printable character
@@ -324,14 +371,14 @@ func Search(item, in []byte, at int) (found bool, foundAt int) {
 	}
 	if canExist(item, in, at) {
 		for foundAt = at; foundAt < len(in); foundAt++ {
-			if found, foundAt = Find(item[0], in, at); found {
+			if found, foundAt = Find(item[0], in, foundAt); found {
 				if is, _ := Exists(item, in, foundAt); is {
 					return
 				}
 			}
 		}
 	}
-	foundAt = -1
+	foundAt = at
 	return
 }
 
@@ -344,7 +391,17 @@ func Find(b byte, in []byte, at int) (found bool, foundAt int) {
 			return
 		}
 	}
-	foundAt = -1
+	foundAt = at
+	return
+}
+
+func Next(c Condition, in []byte, at int) (found bool, foundAt int) {
+	for foundAt = at; foundAt < len(in); foundAt++ {
+		if found, foundAt = c(in, foundAt); found {
+			return
+		}
+	}
+	foundAt = at
 	return
 }
 
@@ -434,6 +491,14 @@ func Null(in []byte, at int) (n []byte, end int) {
 	return nil, at
 }
 
+func Module(in []byte, at int) (n []byte, end int) {
+	return ModuleItem.Parse(in, at)
+}
+
+func Version(in []byte, at int) (n []byte, end int) {
+	return VersionItem.Parse(in, at)
+}
+
 // ----------------------------------------------------------------------------
 // CONVERSIONS
 
@@ -463,6 +528,13 @@ func Int(s []byte) int {
 func Float(s []byte) float64 {
 	if n, err := strconv.ParseFloat(string(s), 64); err == nil {
 		return n
+	}
+	return 0
+}
+
+func BoolToInt(b bool) int {
+	if b {
+		return 1
 	}
 	return 0
 }

@@ -82,8 +82,8 @@ func NewPackage(pkgPath string) *Package {
 	// check current module
 	// check go src modules
 	// check installed modules
-	mod := path.CurrentDir().Module().Name
-	fmt.Println("NewPackage", mod)
+	p := path.GetPackagePath(pkgPath)
+	fmt.Println(p)
 	return &Package{
 		Name:    pkgPath,
 		Imports: data.Make[*Package](data.Cap),

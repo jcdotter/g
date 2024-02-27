@@ -18,7 +18,8 @@ import (
 	"go/parser"
 	"go/token"
 	"testing"
-)
+	/* pgx "github.com/jackc/pgx/v5"
+	"github.com/jcdotter/gotype" */)
 
 func TestAst(t *testing.T) {
 	var err error
@@ -34,5 +35,9 @@ func TestAst(t *testing.T) {
 
 func TestNewPackage(t *testing.T) {
 	NewPackage("github.com/jcdotter/go/data")
+	NewPackage("strings")
+	NewPackage("github.com/jackc/pgx/v5")
+	/* _ = pgx.ErrNoRows
+	_ = gotype.STRING("") */
 
 }

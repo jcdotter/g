@@ -54,15 +54,15 @@ func TestNull(t *testing.T) {
 }
 
 func TestExists(t *testing.T) {
-	ok := Exists([]byte("ts"), []byte("exists "), 0)
+	ok, _ := Exists([]byte("ts"), []byte("exists "), 0)
 	test.Assert(t, false, ok, "parse exists fail")
-	ok = Exists([]byte("ex"), []byte("exists "), 0)
+	ok, _ = Exists([]byte("ex"), []byte("exists "), 0)
 	test.Assert(t, true, ok, "parse exists pass")
 }
 
 func TestSearch(t *testing.T) {
-	i := Search([]byte{'}'}, []byte("{{}}"), 0)
+	_, i := Search([]byte{'}'}, []byte("{{}}"), 0)
 	test.Assert(t, 2, i, "search")
-	i = Find('}', []byte("{{}}"), 0)
+	_, i = Find('}', []byte("{{}}"), 0)
 	test.Assert(t, 2, i, "find")
 }

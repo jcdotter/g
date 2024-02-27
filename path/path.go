@@ -23,7 +23,7 @@ import (
 	"github.com/jcdotter/go/stack"
 )
 
-var PkgPath, SrcPath string
+var SrcPath, PkgPath, ModPath, Mod string
 
 var (
 	Sep    = string(os.PathSeparator)
@@ -34,15 +34,15 @@ var (
 func init() {
 	// set the package path
 	if p := os.Getenv("GOPATH"); p != "" {
-		PkgPath = Join(p, "pkg", "mod", Sep)
+		PkgPath = Join(p, "pkg", "mod")
 	} else {
-		PkgPath = Join(os.Getenv("HOME"), "go", "pkg", "mod", Sep)
+		PkgPath = Join(os.Getenv("HOME"), "go", "pkg", "mod")
 	}
 	// set the source path
-	if p := os.Getenv("GOROOT"); p != "" {
-		SrcPath = Join(p, "src", Sep)
-	} else {
-		SrcPath = Join("usr", "local", "go", "src", Sep)
+	SrcPath = Join("/usr", "local", "go", "src")
+	// set the module path
+	if p, err := os.Getwd(); err == nil {
+		Mod, _, ModPath, _ = GetModule(p)
 	}
 }
 
@@ -107,6 +107,17 @@ func CurrentFile() *Path {
 // CurrentDir returns the current directory path
 func CurrentDir() *Path {
 	return DirPath(1)
+}
+
+func WorkingDir() *Path {
+	dir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	return &Path{
+		path: dir,
+		abs:  true,
+	}
 }
 
 // Set creates a path from the given 3 elements

@@ -21,11 +21,7 @@ import (
 	"github.com/jcdotter/go/parser"
 )
 
-var (
-	modPrefix = "module "
-	verPrefix = "go "
-	modFile   = "go.mod"
-)
+var modFile = "go.mod"
 
 // Element represents a Path element such as
 // a package, module, or file
@@ -189,7 +185,7 @@ func GetAbsDir(path string) (dir string) {
 // current and each parent in the provided path
 // and returns the module name, version, directory,
 // and full path of the go.mod file
-func GetModule(modPath string) (mod, v, dir, mpath string) {
+func GetModule(modPath string) (mod, ver, dir, mpath string) {
 	var found bool
 	found, dir, mpath = GetFileUpPath(modPath, modFile)
 	if !found {
@@ -197,46 +193,34 @@ func GetModule(modPath string) (mod, v, dir, mpath string) {
 	}
 	n := 0
 	b, _ := os.ReadFile(mpath)
-	mod, n = parseMod(modPrefix, b, n)
-	v, _ = parseMod(verPrefix, b, n)
+	m, n := parser.Module(b, n)
+	v, _ := parser.Version(b, n)
+	mod = string(m)
+	ver = string(v)
 	return
 }
 
-func parseMod(item string, in []byte, at int) (mod string, i int) {
-	// build parser conditions
-	p := parser.Item(
-		// item identifier
-		parser.CondString(item, '='),
-		// end of item
-		parser.OR(
-			parser.NOT(parser.IsChar),
-			parser.Cond('\n', '='),
-			parser.Cond('\r', '='),
-			parser.Cond('\t', '='),
-			parser.Cond(' ', '='),
-			parser.CondString("//", '='),
-			func(in []byte, at int) (ok bool, end int) { return at == len(in), at },
-		),
-		// skip items
-		// comment
-		parser.Item(
-			parser.CondString("//", '='),
-			parser.Cond('\n', '='),
-		),
-		// block comment
-		parser.Item(
-			parser.CondString("/*", '='),
-			parser.CondString("*/", '='),
-		),
-	)
-	if i = p.Search(in, at); i != -1 {
-		m, _ := p.Parse(in, i)
-		mod = string(m)
+func GetPackagePath(fullName string) (pkg string) {
+	// check working directory for the package
+	if strings.HasPrefix(fullName, Mod) {
+		return Join(ModPath, strings.TrimPrefix(fullName, Mod))
 	}
-	return
-}
-
-func GetPackage(fullName string) (pkg string) {
-
-	return
+	// check go src directory for the package
+	pkg = Join(SrcPath, fullName)
+	if f, err := os.Open(pkg); !os.IsNotExist(err) {
+		defer f.Close()
+		return
+	}
+	// check go mod directory for the package
+	b, _ := os.ReadFile(Join(ModPath, modFile))
+	if found, at := parser.Search([]byte(fullName), b, 0); found {
+		_, vbeg := parser.Find('v', b, at+len(fullName))
+		_, vend := parser.Next(parser.NOT(parser.IsChar), b, vbeg)
+		pkg = Join(PkgPath, fullName) + "@" + string(b[vbeg:vend-1])
+		if f, err := os.Open(pkg); !os.IsNotExist(err) {
+			defer f.Close()
+			return
+		}
+	}
+	return ""
 }
