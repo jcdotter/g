@@ -15,9 +15,11 @@
 package inspect
 
 import (
+	"fmt"
 	"go/ast"
 
 	"github.com/jcdotter/go/data"
+	"github.com/jcdotter/go/path"
 )
 
 // -----------------------------------------------------------------------------
@@ -75,9 +77,15 @@ type Package struct {
 	i       bool       // the package has been inspected
 }
 
-func NewPackage(path string) *Package {
+func NewPackage(pkgPath string) *Package {
+	// TODO:
+	// check current module
+	// check go src modules
+	// check installed modules
+	mod := path.CurrentDir().Module().Name
+	fmt.Println("NewPackage", mod)
 	return &Package{
-		Path:    path,
+		Name:    pkgPath,
 		Imports: data.Make[*Package](data.Cap),
 		Files:   data.Make[*File](data.Cap),
 		Values:  data.Make[*Value](data.Cap),

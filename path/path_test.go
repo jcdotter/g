@@ -25,10 +25,11 @@ var (
 )
 
 func TestMod(t *testing.T) {
-	fmt.Println(IsFile("/home/decodex/lib/grpg/generator/helps.go"))
+	/* fmt.Println(IsFile("/home/decodex/lib/grpg/generator/helps.go"))
 	fmt.Println(IsDir("/home/decodex/lib/grpg/generator/helps.go"))
 	fmt.Println(New("../../go.mod").Path())
-	fmt.Println(New("../../go.mod").Parent().Path())
+	fmt.Println(New("../../go.mod").Parent().Path()) */
+	fmt.Println(CurrentDir().Module())
 }
 
 func BenchmarkAbs(b *testing.B) {

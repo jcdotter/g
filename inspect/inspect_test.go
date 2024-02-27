@@ -31,3 +31,8 @@ func TestAst(t *testing.T) {
 	}
 	f.Inspect()
 }
+
+func TestNewPackage(t *testing.T) {
+	NewPackage("github.com/jcdotter/go/data")
+
+}

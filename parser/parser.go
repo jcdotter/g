@@ -14,7 +14,9 @@
 
 package parser
 
-import "strconv"
+import (
+	"strconv"
+)
 
 // object: series of (key, value) pairs
 // list: series of values
@@ -31,12 +33,12 @@ import "strconv"
 // Condition stores a single conditional operator and value
 // for evaluating if a condition is met. Conditions are used
 // as the building blocks for checks.
-type condition struct {
+/* type condition struct {
 	o byte   // operator (=, !, <, >, <=, >=)
 	n bool   // is bytes, use s
 	b byte   // value
 	s []byte // value
-}
+} */
 
 func condOp(op []byte) byte {
 	switch string(op) {
@@ -59,80 +61,73 @@ func condOp(op []byte) byte {
 // Cond returns a condition with a value and an operator
 // if no operator is provided, the condition operator is =.
 // Operators: (=, !, <, >, <=, >=).
-// Example: Cond([]byte("hello"), '!') (not equal to "hello")
-func Cond(val byte, op ...byte) (c condition) {
-	return condition{b: val, o: condOp(op)}
+// Example: Cond('x', '!') (not equal to "x")
+func Cond(val byte, op ...byte) (c check) {
+	switch condOp(op) {
+	case 0:
+		return func(in []byte, at int) (ok bool, end int) { return val == in[at], at + 1 }
+	case 1:
+		return func(in []byte, at int) (ok bool, end int) { return val != in[at], at + 1 }
+	case 2:
+		return func(in []byte, at int) (ok bool, end int) { return val < in[at], at + 1 }
+	case 3:
+		return func(in []byte, at int) (ok bool, end int) { return val > in[at], at + 1 }
+	case 4:
+		return func(in []byte, at int) (ok bool, end int) { return val <= in[at], at + 1 }
+	case 5:
+		return func(in []byte, at int) (ok bool, end int) { return val >= in[at], at + 1 }
+	}
+	return
 }
 
-func CondBytes(val []byte, op ...byte) (c condition) {
+// Cond returns a condition with a value and an operator
+// if no operator is provided, the condition operator is =.
+// Operators: (=, !, <, >, <=, >=).
+// Example: CondString("hello", '!') (not equal to "hello")
+func CondString(val string, op ...byte) (c check) {
 	switch len(val) {
 	case 0:
 		panic("invalid condition")
 	case 1:
 		return Cond(val[0], op...)
-	default:
-		return condition{o: condOp(op), n: true, s: val}
 	}
-}
-
-// Conds returns a series of conditions as a series of checks
-// Example: Conds(Cond([]byte("hello"), '!'), Cond([]byte("world"), '<'))
-func Conds(conditions ...condition) (c checks) {
-	for _, i := range conditions {
-		if i.n {
-			switch i.o {
-			case 0:
-				c = append(c, func(in []byte, at int) (ok bool, end int) {
-					return Exists(i.s, in, at), at + len(i.s)
-				})
-			case 1:
-				c = append(c, func(in []byte, at int) (ok bool, end int) {
-					return !Exists(i.s, in, at), at + len(i.s)
-				})
-			case 2:
-				c = append(c, func(in []byte, at int) (ok bool, end int) {
-					return string(i.s) < string(in[at:len(i.s)]), at + len(i.s)
-				})
-			case 3:
-				c = append(c, func(in []byte, at int) (ok bool, end int) {
-					return string(i.s) > string(in[at:len(i.s)]), at + len(i.s)
-				})
-			case 4:
-				c = append(c, func(in []byte, at int) (ok bool, end int) {
-					return string(i.s) <= string(in[at:len(i.s)]), at + len(i.s)
-				})
-			case 5:
-				c = append(c, func(in []byte, at int) (ok bool, end int) {
-					return string(i.s) >= string(in[at:len(i.s)]), at + len(i.s)
-				})
-			}
-		} else {
-			switch i.o {
-			case 0:
-				c = append(c, func(in []byte, at int) (ok bool, end int) { return i.b == in[at], at + 1 })
-			case 1:
-				c = append(c, func(in []byte, at int) (ok bool, end int) { return i.b != in[at], at + 1 })
-			case 2:
-				c = append(c, func(in []byte, at int) (ok bool, end int) { return i.b < in[at], at + 1 })
-			case 3:
-				c = append(c, func(in []byte, at int) (ok bool, end int) { return i.b > in[at], at + 1 })
-			case 4:
-				c = append(c, func(in []byte, at int) (ok bool, end int) { return i.b <= in[at], at + 1 })
-			case 5:
-				c = append(c, func(in []byte, at int) (ok bool, end int) { return i.b >= in[at], at + 1 })
-			}
+	l := len(val)
+	switch condOp(op) {
+	case 0:
+		return func(in []byte, at int) (ok bool, end int) {
+			return val == string(in[at:at+l]), at + l
+		}
+	case 1:
+		return func(in []byte, at int) (ok bool, end int) {
+			return val != string(in[at:at+l]), at + l
+		}
+	case 2:
+		return func(in []byte, at int) (ok bool, end int) {
+			return val < string(in[at:at+l]), at + l
+		}
+	case 3:
+		return func(in []byte, at int) (ok bool, end int) {
+			return val > string(in[at:at+l]), at + l
+		}
+	case 4:
+		return func(in []byte, at int) (ok bool, end int) {
+			return val <= string(in[at:at+l]), at + l
+		}
+	case 5:
+		return func(in []byte, at int) (ok bool, end int) {
+			return val >= string(in[at:at+l]), at + l
 		}
 	}
 	return
 }
 
-type check func(in []byte, at int) (ok bool, end int)
-type checks []check
-
-// Checks returns a series of checks as a series of checks
+// Checks comibines a series of checks into a single check
 func Checks(c ...check) checks {
 	return c
 }
+
+type check func(in []byte, at int) (ok bool, end int)
+type checks []check
 
 // And is used to combine checks with a logical AND operator
 func (c checks) And(in []byte, at int) (ok bool, end int) {
@@ -182,20 +177,38 @@ func (i item) Is(in []byte, at int) (ok bool, end int) {
 func (i item) Parse(in []byte, at int) (out []byte, end int) {
 	var ok bool
 	if ok, end = i.pre(in, at); ok {
-		for ; end < len(in); end++ {
-		loop:
+		for end < len(in) {
 			for _, j := range i.encl {
 				if _, n := j.Parse(in, end); n > end {
 					end = n
-					goto loop
+					goto next
 				}
 			}
-			if ok, end = i.post(in, at); ok {
+			if ok, _ = i.post(in, end); ok {
 				return in[at:end], end
 			}
+			end++
+		next:
 		}
 	}
 	return nil, at
+}
+
+func (i item) Search(in []byte, at int) int {
+	for at < len(in) {
+		if ok, _ := i.pre(in, at); ok {
+			return at
+		}
+		for _, e := range i.encl {
+			if _, o := e.Parse(in, at); o > at {
+				at = o
+				goto next
+			}
+		}
+		at++
+	next:
+	}
+	return -1
 }
 
 // ----------------------------------------------------------------------------

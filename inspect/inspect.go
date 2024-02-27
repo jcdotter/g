@@ -59,7 +59,8 @@ func (p *Package) Inspect() (err error) {
 // parse all entities in the package. Returns an error if the package cannot be parsed.
 func (p *Package) Parse() (err error) {
 	// TODO: Make file parsing concurrent.
-	fmt.Println("PARSING PACKAGE:", p.Path)
+
+	fmt.Println("PARSING PACKAGE:", p.Path, path.Files(p.Path))
 	// parse each file in the package
 	for _, f := range path.Files(p.Path) {
 		var file *File
@@ -81,10 +82,11 @@ func (p *Package) Parse() (err error) {
 			return
 		}
 	}
-
+	fmt.Println(p.Files.Len())
 	// parse package name
 	if p.Files.Len() > 0 {
 		p.Name = p.Files.Index(0).(*File).t.Name.Name
+		fmt.Println("PACKAGE NAME:", p.Name)
 	}
 	return
 }

@@ -15,15 +15,15 @@
 package path
 
 import (
-	"bufio"
-	"bytes"
 	"os"
 	"strings"
+
+	"github.com/jcdotter/go/parser"
 )
 
 var (
-	modPrefix = []byte("module ")
-	verPrefix = []byte("go ")
+	modPrefix = "module "
+	verPrefix = "go "
 	modFile   = "go.mod"
 )
 
@@ -189,26 +189,47 @@ func GetAbsDir(path string) (dir string) {
 // current and each parent in the provided path
 // and returns the module name, version, directory,
 // and full path of the go.mod file
-func GetModule(path string) (mod, v, dir, mpath string) {
+func GetModule(modPath string) (mod, v, dir, mpath string) {
 	var found bool
-	found, dir, mpath = GetFileUpPath(path, modFile)
+	found, dir, mpath = GetFileUpPath(modPath, modFile)
 	if !found {
 		return
 	}
-	f, _ := os.Open(mpath)
-	defer f.Close()
-	s := bufio.NewScanner(f)
-	mod = parseModItem(s, modPrefix)
-	v = parseModItem(s, verPrefix)
+	n := 0
+	b, _ := os.ReadFile(mpath)
+	mod, n = parseMod(modPrefix, b, n)
+	v, _ = parseMod(verPrefix, b, n)
 	return
 }
 
-func parseModItem(mod *bufio.Scanner, item []byte) (value string) {
-	for mod.Scan() {
-		ln := mod.Bytes()
-		if bytes.HasPrefix(ln, item) {
-			return string(ln[len(item):])
-		}
+func parseMod(item string, in []byte, at int) (mod string, i int) {
+	// build parser conditions
+	p := parser.Item(
+		// item identifier
+		parser.CondString(item, '='),
+		// end of item
+		parser.Checks(
+			parser.Cond('\n', '='),
+			parser.Cond('\r', '='),
+			parser.Cond('\t', '='),
+			parser.Cond(' ', '='),
+			parser.CondString("//", '='),
+		).Or,
+		// skip items
+		// comment
+		parser.Item(
+			parser.CondString("//", '='),
+			parser.Cond('\n', '='),
+		),
+		// block comment
+		parser.Item(
+			parser.CondString("/*", '='),
+			parser.CondString("*/", '='),
+		),
+	)
+	if i = p.Search(in, at); i != -1 {
+		m, _ := p.Parse(in, i)
+		mod = string(m)
 	}
 	return
 }
