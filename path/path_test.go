@@ -16,6 +16,7 @@ package path
 
 import (
 	"fmt"
+	"os"
 	"testing"
 )
 
@@ -30,6 +31,11 @@ func TestMod(t *testing.T) {
 	fmt.Println(New("../../go.mod").Path())
 	fmt.Println(New("../../go.mod").Parent().Path()) */
 	fmt.Println(CurrentDir().Module())
+}
+
+func TestPath(t *testing.T) {
+	fmt.Println(Abs("../../go/data"))
+	fmt.Println(os.Getwd())
 }
 
 func BenchmarkAbs(b *testing.B) {

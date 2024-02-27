@@ -208,13 +208,15 @@ func parseMod(item string, in []byte, at int) (mod string, i int) {
 		// item identifier
 		parser.CondString(item, '='),
 		// end of item
-		parser.Checks(
+		parser.OR(
+			parser.NOT(parser.IsChar),
 			parser.Cond('\n', '='),
 			parser.Cond('\r', '='),
 			parser.Cond('\t', '='),
 			parser.Cond(' ', '='),
 			parser.CondString("//", '='),
-		).Or,
+			func(in []byte, at int) (ok bool, end int) { return at == len(in), at },
+		),
 		// skip items
 		// comment
 		parser.Item(
@@ -231,5 +233,10 @@ func parseMod(item string, in []byte, at int) (mod string, i int) {
 		m, _ := p.Parse(in, i)
 		mod = string(m)
 	}
+	return
+}
+
+func GetPackage(fullName string) (pkg string) {
+
 	return
 }

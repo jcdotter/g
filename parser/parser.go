@@ -30,15 +30,11 @@ import (
 // ----------------------------------------------------------------------------
 // CONDITIONAL STATEMENTS
 
-// Condition stores a single conditional operator and value
-// for evaluating if a condition is met. Conditions are used
-// as the building blocks for checks.
-/* type condition struct {
-	o byte   // operator (=, !, <, >, <=, >=)
-	n bool   // is bytes, use s
-	b byte   // value
-	s []byte // value
-} */
+// Condition stores a single conditional statement to be used
+// for evaluating the next action in parsing a []byte. Conditions
+// are used as the building blocks for the parser.
+type Condition func(in []byte, at int) (ok bool, end int)
+type Conditions []Condition
 
 func condOp(op []byte) byte {
 	switch string(op) {
@@ -58,11 +54,11 @@ func condOp(op []byte) byte {
 	panic("invalid operator")
 }
 
-// Cond returns a condition with a value and an operator
-// if no operator is provided, the condition operator is =.
+// Cond returns a Condition with a value and an operator
+// if no operator is provided, the Condition operator is =.
 // Operators: (=, !, <, >, <=, >=).
 // Example: Cond('x', '!') (not equal to "x")
-func Cond(val byte, op ...byte) (c check) {
+func Cond(val byte, op ...byte) (c Condition) {
 	switch condOp(op) {
 	case 0:
 		return func(in []byte, at int) (ok bool, end int) { return val == in[at], at + 1 }
@@ -80,14 +76,14 @@ func Cond(val byte, op ...byte) (c check) {
 	return
 }
 
-// Cond returns a condition with a value and an operator
-// if no operator is provided, the condition operator is =.
+// Cond returns a Condition with a value and an operator
+// if no operator is provided, the Condition operator is =.
 // Operators: (=, !, <, >, <=, >=).
 // Example: CondString("hello", '!') (not equal to "hello")
-func CondString(val string, op ...byte) (c check) {
+func CondString(val string, op ...byte) (c Condition) {
 	switch len(val) {
 	case 0:
-		panic("invalid condition")
+		panic("invalid Condition")
 	case 1:
 		return Cond(val[0], op...)
 	}
@@ -121,32 +117,63 @@ func CondString(val string, op ...byte) (c check) {
 	return
 }
 
-// Checks comibines a series of checks into a single check
-func Checks(c ...check) checks {
-	return c
+// OR comibines a series of Conditions into a single
+// Condition validating if any of the Conditions are met.
+// A Condition is a func(in []byte, at int) (ok bool, end int)
+// that returns true if the Condition is met at the given int
+// position in the provided []byte.
+func OR(c ...Condition) Condition {
+	return func(in []byte, at int) (ok bool, end int) {
+		for _, i := range c {
+			if ok, end = i(in, at); ok {
+				return
+			}
+		}
+		return
+	}
 }
 
-type check func(in []byte, at int) (ok bool, end int)
-type checks []check
-
-// And is used to combine checks with a logical AND operator
-func (c checks) And(in []byte, at int) (ok bool, end int) {
-	for _, i := range c {
-		if ok, end = i(in, at); !ok {
-			return
+// OR comibines a series of Conditions into a single
+// Condition validating if all of the Conditions are met.
+// A Condition is a func(in []byte, at int) (ok bool, end int)
+// that returns true if the Condition is met at the given int
+// position in the provided []byte.
+func AND(c ...Condition) Condition {
+	return func(in []byte, at int) (ok bool, end int) {
+		for _, i := range c {
+			if ok, end = i(in, at); !ok {
+				return
+			}
 		}
+		return
 	}
-	return
 }
 
-// Or is used to combine checks with a logical OR operator
-func (c checks) Or(in []byte, at int) (ok bool, end int) {
-	for _, i := range c {
-		if ok, end = i(in, at); ok {
-			return
+// NOT returns a Condition that returns true if the provided
+// Condition is not met at the given int position in the provided
+// []byte.
+func NOT(c Condition) Condition {
+	return func(in []byte, at int) (ok bool, end int) {
+		if ok, end = c(in, at); !ok {
+			return true, end
 		}
+		return false, at
 	}
-	return
+}
+
+// And is used to evaluate a series of Conditions with a logical AND operator
+func (c Conditions) And(in []byte, at int) (ok bool, end int) {
+	return AND(c...)(in, at)
+}
+
+// Or is used to evaluate a series of conitions with a logical OR operator
+func (c Conditions) Or(in []byte, at int) (ok bool, end int) {
+	return OR(c...)(in, at)
+}
+
+// Not is used to evaluate a single Condition with a logical NOT operator
+func (c Conditions) Not(in []byte, at int) (ok bool, end int) {
+	return NOT(c[0])(in, at)
 }
 
 // ----------------------------------------------------------------------------
@@ -159,21 +186,49 @@ type Parser func(in []byte, at int) (item []byte, end int)
 // item represents a parsable item where parsing begins when a pre-check
 // is met and ends when a post-check is met.
 type item struct {
-	pre  check  // syntax pre check conditions: how to find the item
-	post check  // syntax post check conditions: how to end the item
-	encl []item // enclosed items: items to be skipped if found
+	pre  Condition // syntax pre check Conditions: how to find the item
+	post Condition // syntax post check Conditions: how to end the item
+	encl []item    // enclosed items: items to be escaped/skipped if found
 }
 
-// Item returns a new item with pre and post checks
-// and a list of enclosed items to be skipped
-func Item(pre, post check, encl ...item) (i item) {
+// Item returns a new parsable item with pre and post checks
+// and a list of enclosed items to be escaped/skipped if found
+func Item(pre, post Condition, encl ...item) (i item) {
 	return item{pre: pre, post: post, encl: encl}
 }
 
-func (i item) Is(in []byte, at int) (ok bool, end int) {
+// Exists returns true if the item prefix condition
+// is true in the provided []byte  at the specified
+// position, otherwise it returns false.
+func (i item) Exists(in []byte, at int) (ok bool, end int) {
 	return i.pre(in, at)
 }
 
+// Search returns the next position of the item prefix
+// in the provided []byte at or after the specified
+// position. If the item prefix does not exist, the
+// returns -1.
+func (i item) Search(in []byte, at int) int {
+	for at < len(in) {
+		if ok, _ := i.pre(in, at); ok {
+			return at
+		}
+		for _, e := range i.encl {
+			if _, o := e.Parse(in, at); o > at {
+				at = o
+				goto next
+			}
+		}
+		at++
+	next:
+	}
+	return -1
+}
+
+// Parse returns the item in the provided []byte at the
+// specified position. If the item exists, the function
+// returns the item and the position after the item, otherwise
+// it returns nil and the original position.
 func (i item) Parse(in []byte, at int) (out []byte, end int) {
 	var ok bool
 	if ok, end = i.pre(in, at); ok {
@@ -194,22 +249,15 @@ func (i item) Parse(in []byte, at int) (out []byte, end int) {
 	return nil, at
 }
 
-func (i item) Search(in []byte, at int) int {
-	for at < len(in) {
-		if ok, _ := i.pre(in, at); ok {
-			return at
-		}
-		for _, e := range i.encl {
-			if _, o := e.Parse(in, at); o > at {
-				at = o
-				goto next
-			}
-		}
-		at++
-	next:
-	}
-	return -1
-}
+// ----------------------------------------------------------------------------
+// ITEM LIBRARY
+
+var (
+	GoComment      = Item(CondString("//"), Cond('\n'))
+	GoBlockComment = Item(CondString("/*"), CondString("*/"))
+	// GoStringLit
+	// GoString
+)
 
 // ----------------------------------------------------------------------------
 // PARSE LIBRARY
@@ -223,69 +271,81 @@ func canExist(item, in []byte, at int) bool { return len(item) != 0 && len(item)
 
 // IsChar checks if in byte at the specified position in the provided
 // []byte is a non-whitspace ('\r','\n','\t',' ') printable character
-func IsChar(in []byte, at int) bool {
-	return isChar(in[at])
+func IsChar(in []byte, at int) (ok bool, end int) {
+	return isChar(in[at]), at + 1
 }
 
 // IsNum checks if in byte at the specified position in the provided
 // []byte is a number (0-9)
-func IsNum(in []byte, at int) bool {
-	return isNum(in[at])
+func IsNum(in []byte, at int) (ok bool, end int) {
+	return isNum(in[at]), at + 1
 }
 
 // IsAlpha checks if in byte at the specified position in the provided
 // []byte is a letter (a-z, A-Z)
-func IsAlpha(in []byte, at int) bool {
-	return isAlpha(in[at])
+func IsAlpha(in []byte, at int) (ok bool, end int) {
+	return isAlpha(in[at]), at + 1
 }
 
 // IsAlphamNum checks if in byte at the specified position in the provided
 // []byte is a letter (a-z, A-Z) or a number (0-9)
-func IsAlphamNum(in []byte, at int) bool {
-	return isAlphamNum(in[at])
+func IsAlphamNum(in []byte, at int) (ok bool, end int) {
+	return isAlphamNum(in[at]), at + 1
 }
 
 // IsQuote checks if in byte at the specified position in the provided
 // []byte is a quote (",',`)
-func IsQuote(in []byte, at int) bool {
-	return isQuote(in[at])
+func IsQuote(in []byte, at int) (ok bool, end int) {
+	return isQuote(in[at]), at + 1
 }
 
 // Exists checks if the provided []byte item exists in the provided []byte at the
 // specified position. If the item exists, the function returns true, otherwise
 // it returns false.
-func Exists(item, in []byte, at int) bool {
+func Exists(item, in []byte, at int) (ok bool, end int) {
 	return canExist(item, in, at) &&
-		string(item) == string(in[at:at+len(item)])
+		string(item) == string(in[at:at+len(item)]), at
+}
+
+// ExistsString checks if the provided string exists in the provided []byte at the
+// specified position. If the item exists, the function returns true, otherwise
+// it returns false.
+func ExistsString(item string, in []byte, at int) (ok bool, end int) {
+	return len(item) != 0 && len(item) <= len(in)-at &&
+		item == string(in[at:at+len(item)]), at
 }
 
 // Search checks if the provided []byte item exists in the provided []byte at
 // or after the specified position. If the item exists, the function returns
 // the position of the item, otherwise it returns -1.
-func Search(item, in []byte, at int) int {
+func Search(item, in []byte, at int) (found bool, foundAt int) {
 	if len(item) == 1 {
 		return Find(item[0], in, at)
 	}
 	if canExist(item, in, at) {
-		for i := at; i < len(in); i++ {
-			if i = Find(item[0], in, at); Exists(item, in, i) {
-				return i
+		for foundAt = at; foundAt < len(in); foundAt++ {
+			if found, foundAt = Find(item[0], in, at); found {
+				if is, _ := Exists(item, in, foundAt); is {
+					return
+				}
 			}
 		}
 	}
-	return -1
+	foundAt = -1
+	return
 }
 
 // Find checks if the provided byte exists in the provided []byte at or after
 // the specified position. If the byte exists, the function returns the position
 // of the byte, otherwise it returns -1.
-func Find(b byte, in []byte, at int) int {
-	for i := at; i < len(in); i++ {
-		if in[i] == b {
-			return i
+func Find(b byte, in []byte, at int) (found bool, foundAt int) {
+	for foundAt = at; foundAt < len(in); foundAt++ {
+		if found = in[foundAt] == b; found {
+			return
 		}
 	}
-	return -1
+	foundAt = -1
+	return
 }
 
 // StringLit checks if a literal string exists at the specified position in the
@@ -352,11 +412,11 @@ func Num(in []byte, at int) (n []byte, end int) {
 // []byte. If the provided []byte contains a boolean, the function returns the
 // boolean and the position after the boolean, otherwise it returns nil and -1.
 func Bool(in []byte, at int) (n []byte, end int) {
-	if b := []byte("true"); Exists(b, in, at) {
-		return b, at + 4
+	if exists, _ := ExistsString("true", in, at); exists {
+		return []byte("true"), at + 4
 	}
-	if b := []byte("false"); Exists(b, in, at) {
-		return b, at + 5
+	if exists, _ := ExistsString("false", in, at); exists {
+		return []byte("false"), at + 5
 	}
 	return nil, at
 }
@@ -365,8 +425,11 @@ func Bool(in []byte, at int) (n []byte, end int) {
 // []byte. If the provided []byte contains a null, the function returns the
 // null and the position after the null, otherwise it returns nil and -1.
 func Null(in []byte, at int) (n []byte, end int) {
-	if b := []byte("null"); Exists(b, in, at) {
-		return b, at + 4
+	if exists, _ := ExistsString("null", in, at); exists {
+		return []byte("null"), at + 4
+	}
+	if exists, _ := ExistsString("nil", in, at); exists {
+		return []byte("nil"), at + 3
 	}
 	return nil, at
 }

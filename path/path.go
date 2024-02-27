@@ -23,11 +23,28 @@ import (
 	"github.com/jcdotter/go/stack"
 )
 
+var PkgPath, SrcPath string
+
 var (
 	Sep    = string(os.PathSeparator)
 	ExtSep = "."
 	UpDir  = ".."
 )
+
+func init() {
+	// set the package path
+	if p := os.Getenv("GOPATH"); p != "" {
+		PkgPath = Join(p, "pkg", "mod", Sep)
+	} else {
+		PkgPath = Join(os.Getenv("HOME"), "go", "pkg", "mod", Sep)
+	}
+	// set the source path
+	if p := os.Getenv("GOROOT"); p != "" {
+		SrcPath = Join(p, "src", Sep)
+	} else {
+		SrcPath = Join("usr", "local", "go", "src", Sep)
+	}
+}
 
 type Path struct {
 	path  string
