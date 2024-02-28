@@ -18,8 +18,7 @@ import (
 	"go/parser"
 	"go/token"
 	"testing"
-	/* pgx "github.com/jackc/pgx/v5"
-	"github.com/jcdotter/gotype" */)
+)
 
 func TestAst(t *testing.T) {
 	var err error

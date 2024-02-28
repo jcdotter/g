@@ -39,7 +39,11 @@ func init() {
 		PkgPath = Join(os.Getenv("HOME"), "go", "pkg", "mod")
 	}
 	// set the source path
-	SrcPath = Join("/usr", "local", "go", "src")
+	if p := os.Getenv("GOROOT"); p != "" {
+		SrcPath = Join(p, "src")
+	} else {
+		SrcPath = Join(Sep+"usr", "local", "go", "src")
+	}
 	// set the module path
 	if p, err := os.Getwd(); err == nil {
 		Mod, _, ModPath, _ = GetModule(p)

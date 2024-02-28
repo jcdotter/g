@@ -117,3 +117,8 @@ var (
 	ShiftL byte = '<'
 	ShiftR byte = '>'
 )
+
+func IsGoFile(f string) bool {
+	l := len(f)
+	return l > 3 && f[l-3:] == ".go" && (l < 8 || f[l-8:] != "_test.go")
+}

@@ -15,7 +15,7 @@
 package inspect
 
 import (
-	"strings"
+	//"strings"
 	_ "testing"
 
 	"github.com/jcdotter/go/data"
@@ -55,7 +55,8 @@ func D() T { return B }
 
 var X = A.X
 var N = data.IndexMin
-var M = strings.Index("string", "s")
+
+//var M = strings.Index("string", "s")
 
 /*
 var W = B.C()

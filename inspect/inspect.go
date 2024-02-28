@@ -19,6 +19,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -63,23 +64,25 @@ func (p *Package) Parse() (err error) {
 	fmt.Println("PARSING PACKAGE:", p.Path, path.Files(p.Path))
 	// parse each file in the package
 	for _, f := range path.Files(p.Path) {
-		var file *File
+		if IsGoFile(f) {
+			var file *File
 
-		// parse file name
-		n := f[strings.LastIndex(f, "/")+1 : strings.LastIndex(f, ".")]
+			// parse file name
+			n := f[:len(f)-3]
 
-		// check if file is already parsed
-		// else add a new file to the package
-		if f := p.Files.Get(n); f != nil {
-			return
-		}
-		file = NewFile(p, n)
-		p.Files.Add(file)
-
-		// parse file to abstract syntax tree
-		file.t, err = parser.ParseFile(token.NewFileSet(), f, nil, parser.SkipObjectResolution)
-		if err != nil {
-			return
+			// check if file is already parsed
+			// else add a new file to the package
+			if f := p.Files.Get(n); f != nil {
+				return
+			}
+			file = NewFile(p, n)
+			p.Files.Add(file)
+			f = p.Path + string(os.PathSeparator) + f
+			// parse file to abstract syntax tree
+			file.t, err = parser.ParseFile(token.NewFileSet(), f, nil, parser.SkipObjectResolution)
+			if err != nil {
+				return
+			}
 		}
 	}
 	fmt.Println(p.Files.Len())
@@ -161,24 +164,22 @@ func (f *File) InspectImports(specs []ast.Spec) (err error) {
 		// create and add import to file
 		i := s.(*ast.ImportSpec)
 		imp := &Import{file: f}
-		pkgPath := i.Path.Value
-		if i.Name != nil {
-			imp.name = i.Name.Name
-		} else {
-			imp.name = pkgPath[strings.LastIndex(pkgPath, "/")+1 : len(pkgPath)-1]
-		}
-		f.i.Add(imp)
-		// get package by path if already imported another file,
-		// otherwise create a new imported package and add it to
-		// the current package
-		if pkg := f.p.Imports.Get(pkgPath); pkg != nil {
-			imp.pkg = pkg.(*Package)
-		} else {
-			imp.pkg = NewPackage(pkgPath)
-			f.p.Imports.Add(imp.pkg)
+		var pkgPath string
+		imp.name, pkgPath = PackageName(i.Name, i.Path.Value)
+		if imp.name != "_" && imp.name != "" {
+			f.i.Add(imp)
+
+			// get package by path if already imported another file,
+			// otherwise create a new imported package and add it to
+			// the current package
+			if pkg := f.p.Imports.Get(pkgPath); pkg != nil {
+				imp.pkg = pkg.(*Package)
+			} else {
+				imp.pkg = NewPackage(pkgPath)
+				f.p.Imports.Add(imp.pkg)
+			}
 		}
 	}
-	fmt.Println(f.i.Len())
 	return
 }
 
@@ -379,6 +380,9 @@ func (f *File) InspectFunc(fn *ast.FuncDecl) (err error) {
 			if i := fn.Recv.List[0].Names; len(i) == 1 {
 				if rtyp := f.TypeExpr(fn.Recv.List[0].Type); rtyp != nil {
 					fnc.of = rtyp
+					if rtyp.kind == POINTER {
+						rtyp = rtyp.object.(*Pointer).elem
+					}
 					rtyp.object.(*Struct).methods.Add(fnc)
 				}
 			}
@@ -832,9 +836,10 @@ func (f *File) TypeSelector(s *ast.SelectorExpr) (typ *Type) {
 	idents := append(f.IdentExpr(s.X), s.Sel)
 	f.PrintSelector(idents) // TODO: remove
 	if typ = f.TypeIdent(idents[0]); typ != nil {
+		fmt.Println("IDENT LEN:", len(idents))
 		for i := 1; i < len(idents); i++ {
-			typ = f.TypeIdentKey(typ, idents[i].Name)
 			fmt.Println(reflect.TypeOf(typ.object)) // TODO: remove
+			typ = f.TypeIdentKey(typ, idents[i].Name)
 		}
 	}
 	return
@@ -856,6 +861,7 @@ func (f *File) PrintSelector(i []*ast.Ident) {
 }
 
 func (f *File) TypeIdentKey(t *Type, key string) (typ *Type) {
+	fmt.Println("TypeIdentKey:", t.name, key)
 	if t != nil && t.object != nil {
 		switch t := t.object.(type) {
 		case *Struct:
@@ -876,6 +882,7 @@ func (f *File) TypeIdentKey(t *Type, key string) (typ *Type) {
 }
 
 func (f *File) IdentExpr(e ast.Expr) (i []*ast.Ident) {
+	fmt.Println("IDENT EXPR:", reflect.TypeOf(e))
 	switch x := e.(type) {
 	case *ast.Ident:
 		return []*ast.Ident{x}

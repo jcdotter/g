@@ -15,8 +15,8 @@
 package inspect
 
 import (
-	"fmt"
 	"go/ast"
+	"strings"
 
 	"github.com/jcdotter/go/data"
 	"github.com/jcdotter/go/path"
@@ -78,20 +78,30 @@ type Package struct {
 }
 
 func NewPackage(pkgPath string) *Package {
-	// TODO:
-	// check current module
-	// check go src modules
-	// check installed modules
-	p := path.GetPackagePath(pkgPath)
-	fmt.Println(p)
 	return &Package{
 		Name:    pkgPath,
+		Path:    path.GetPackagePath(pkgPath),
 		Imports: data.Make[*Package](data.Cap),
 		Files:   data.Make[*File](data.Cap),
 		Values:  data.Make[*Value](data.Cap),
 		Types:   data.Make[*Type](data.Cap),
 		Funcs:   data.Make[*Func](data.Cap),
 	}
+}
+
+func PackageName(name *ast.Ident, path string) (n, p string) {
+	if path[0] == '"' {
+		p = path[1 : len(path)-1]
+	}
+	if name != nil {
+		n = name.Name
+		return
+	}
+	n = p
+	if ext := strings.LastIndex(n, "/"); ext != -1 {
+		n = n[ext+1:]
+	}
+	return
 }
 
 // data.Elem interface method
