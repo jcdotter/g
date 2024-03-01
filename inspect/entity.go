@@ -142,9 +142,10 @@ func (f *File) Package() *Package {
 
 // Import represents an imported package in a file.
 type Import struct {
-	file *File    // the file where the import is declared
-	name string   // the import alias or pkg suffix
-	pkg  *Package // the imported package
+	file *File           // the file where the import is declared
+	name string          // the import alias or pkg suffix
+	spec *ast.ImportSpec // the import specification
+	pkg  *Package        // the imported package
 }
 
 // data.Elem interface method
@@ -169,10 +170,12 @@ func (i *Import) File() *File {
 
 // Value represents a declared value (const or var) in a file.
 type Value struct {
-	file *File  // the file where the value is declared
-	kind byte   // the value kind (const or var)
-	name string // the value name
-	typ  *Type  // the value type
+	file *File          // the file where the value is declared
+	kind byte           // the value kind (const or var)
+	name string         // the value name
+	spec *ast.ValueSpec // the value specification
+	indx int            // the value index
+	typ  *Type          // the value type
 }
 
 // data.Elem interface method
@@ -202,11 +205,12 @@ func (v *Value) Kind() byte {
 
 // Type represents a declared type in a file.
 type Type struct {
-	file   *File   // he file where the type is declared
-	name   string  // the type name
-	imp    *Import // the type source if imported
-	kind   byte    // the type kind
-	object Object  // the type object, if an object type
+	file   *File         // he file where the type is declared
+	name   string        // the type name
+	spec   *ast.TypeSpec // the type specification
+	imp    *Import       // the type source if imported
+	kind   byte          // the type kind
+	object Object        // the type object, if an object type
 }
 
 // data.Elem interface method
@@ -241,12 +245,13 @@ func (t *Type) Object() Object {
 
 // Func represents a declared function in a file.
 type Func struct {
-	file *File      // the file where the function is declared
-	name string     // the function name
-	typ  *Type      // the function type
-	of   *Type      // the function receiver type
-	in   *data.Data // the function input parameter types
-	out  *data.Data // the function output parameter types
+	file *File         // the file where the function is declared
+	name string        // the function name
+	spec *ast.FuncDecl // the function declaration
+	typ  *Type         // the function type
+	of   *Type         // the function receiver type
+	in   *data.Data    // the function input parameter types
+	out  *data.Data    // the function output parameter types
 }
 
 // data.Elem interface method
