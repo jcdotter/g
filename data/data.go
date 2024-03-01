@@ -39,6 +39,7 @@ var (
 
 type Data struct {
 	sync.Mutex
+	k string         // data block identifier
 	t uintptr        // data type
 	i map[string]int // data index
 	l []Elem         // data list
@@ -69,6 +70,15 @@ func Of(elems ...Elem) (d *Data) {
 		}
 	}
 	return
+}
+
+func (d *Data) Key() string {
+	return d.k
+}
+
+func (d *Data) SetKey(key string) *Data {
+	d.k = key
+	return d
 }
 
 func (d *Data) makeIndex(cap int) {

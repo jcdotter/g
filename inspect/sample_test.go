@@ -17,9 +17,17 @@ package inspect
 import (
 	//"strings"
 	_ "testing"
-
-	"github.com/jcdotter/go/data"
+	"unsafe"
 )
+
+type pointer[T any] struct {
+	_ [0]*T
+
+	_ noCopy
+	v unsafe.Pointer
+}
+
+type noCopy struct{}
 
 /* type (
 	struct1 struct{ Bool bool }
@@ -28,7 +36,7 @@ import (
 	String  string
 ) */
 
-type Str string
+/* type Str string
 
 type S struct {
 	X string
@@ -58,7 +66,7 @@ var X = A.X
 
 var N = data.IndexMin
 
-type Any interface{ Key() string }
+type Any interface{ Key() string } */
 
 //var M = strings.Index("string", "s")
 

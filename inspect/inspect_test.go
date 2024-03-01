@@ -15,21 +15,40 @@
 package inspect
 
 import (
+	"fmt"
 	"go/parser"
 	"go/token"
 	"testing"
+
+	"github.com/jcdotter/go/data"
 )
 
-func TestAst(t *testing.T) {
-	var err error
-	p := NewPackage("github.com/jcdotter/go/data")
-	p.Name = "data"
-	f := NewFile(p, "data")
-	f.t, err = parser.ParseFile(token.NewFileSet(), "../data/data.go", nil, 0)
-	if err != nil {
-		return
+func InspectFile(file string) *File {
+	p := &Package{
+		Name:    file,
+		Path:    file,
+		Imports: data.Make[*Package](data.Cap),
+		Files:   data.Make[*File](data.Cap),
+		Values:  data.Make[*Value](data.Cap),
+		Types:   data.Make[*Type](data.Cap),
+		Funcs:   data.Make[*Func](data.Cap),
 	}
+	f := NewFile(p, file)
+	p.Files.Add(f)
+	f.t, _ = parser.ParseFile(token.NewFileSet(), file, nil, parser.SkipObjectResolution)
+	f.Capture()
 	f.Inspect()
+	return f
+
+}
+
+func TestInspect(t *testing.T) {
+	Inspect("github.com/jcdotter/go/data")
+}
+
+func TestAst(t *testing.T) {
+	f := InspectFile("sample_test.go")
+	fmt.Println("COMPLETED:", f.n)
 }
 
 func TestNewPackage(t *testing.T) {

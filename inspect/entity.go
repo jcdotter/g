@@ -76,6 +76,7 @@ type Package struct {
 	Funcs     *data.Data // the declared functions in the package
 	IsImport  bool       // the package is an import
 	Inspected bool       // the package has been inspected
+	dTypes    *data.Data // types contained within a package declaration
 }
 
 func NewPackage(pkgPath string) *Package {
@@ -87,6 +88,7 @@ func NewPackage(pkgPath string) *Package {
 		Values:  data.Make[*Value](data.Cap),
 		Types:   data.Make[*Type](data.Cap),
 		Funcs:   data.Make[*Func](data.Cap),
+		dTypes:  data.Make[*data.Data](data.Cap),
 	}
 }
 
@@ -108,6 +110,16 @@ func PackageName(name *ast.Ident, path string) (n, p string) {
 // data.Elem interface method
 func (p *Package) Key() string {
 	return p.Path
+}
+
+func (p *Package) NumEntities() (n int) {
+	for _, f := range p.Files.List() {
+		if f.(*File).i.Len() > 0 {
+			n++
+		}
+	}
+	n += p.Values.Len() + p.Types.Len() + p.Funcs.Len()
+	return
 }
 
 type File struct {

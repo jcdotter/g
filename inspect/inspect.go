@@ -22,7 +22,6 @@ import (
 	"os"
 	"reflect"
 	"strconv"
-	"strings"
 
 	"github.com/jcdotter/go/data"
 	"github.com/jcdotter/go/path"
@@ -43,10 +42,18 @@ func Inspect(PkgPath string) (*Package, error) {
 // returns the package object for inspection, or an error if
 // the package cannot be parsed.
 func (p *Package) Inspect() (err error) {
+	fmt.Println("INSPECTING PACKAGE:", p.Name)
 	if err = p.Parse(); err != nil {
 		return
 	}
 	for _, f := range p.Files.List() {
+		fmt.Println("  CAPTURING FILE:", f.(*File).n)
+		if err = f.(*File).Capture(); err != nil {
+			return
+		}
+	}
+	for _, f := range p.Files.List() {
+		fmt.Println("  INSPECTING FILE:", f.(*File).n)
 		if err = f.(*File).Inspect(); err != nil {
 			return
 		}
@@ -84,11 +91,12 @@ func (p *Package) Parse() (err error) {
 			}
 		}
 	}
-	fmt.Println(p.Files.Len())
+
 	// parse package name
 	if p.Files.Len() > 0 {
 		p.Name = p.Files.Index(0).(*File).t.Name.Name
 	}
+
 	return
 }
 
@@ -111,9 +119,9 @@ func (p *Package) TypeIdent(ident string) (typ *Type) {
 	return
 }
 
-// Inspect inspects the declared entities in the file and
+// Capture captures the declared entities in the file and
 // adds them to the package.
-func (f *File) Inspect() (err error) {
+func (f *File) Capture() (err error) {
 	if f.t != nil {
 		// route declaration and capture
 		// them into the package entities
@@ -134,11 +142,6 @@ func (f *File) Inspect() (err error) {
 				}
 			}
 		}
-		// inspect file declarations
-		f.InspectImports()
-		f.InspectTypes()
-		f.InspectFuncs()
-		f.InspectValues()
 	}
 	return
 }
@@ -149,9 +152,20 @@ func (f *File) CaptureImports(specs []ast.Spec) (err error) {
 	for _, s := range specs {
 		i := s.(*ast.ImportSpec)
 		imp := &Import{file: f, spec: i}
-		imp.name, _ = PackageName(i.Name, i.Path.Value)
+		var path string
+		imp.name, path = PackageName(i.Name, i.Path.Value)
 		if imp.name != "_" && imp.name != "" {
 			f.i.Add(imp)
+		}
+		// get package by path if already imported another file,
+		// otherwise create a new imported package and add it to
+		// the current package
+		if pkg := f.p.Imports.Get(path); pkg != nil {
+			imp.pkg = pkg.(*Package)
+		} else {
+			imp.pkg = NewPackage(path)
+			imp.pkg.IsImport = true
+			f.p.Imports.Add(imp.pkg)
 		}
 	}
 	return
@@ -206,67 +220,27 @@ func (f *File) CaptureFunc(fn *ast.FuncDecl) (err error) {
 	return
 }
 
-// InspectImports inspects the import declarations
-// in the file and adds them to the package.
-func (f *File) InspectImports() (err error) {
-	for _, x := range f.i.List() {
-		i := x.(*Import)
-		path := i.spec.Path.Value
-		if path[0] == '"' {
-			path = path[1 : len(path)-1]
-		}
-		// get package by path if already imported another file,
-		// otherwise create a new imported package and add it to
-		// the current package
-		if pkg := f.p.Imports.Get(path); pkg != nil {
-			i.pkg = pkg.(*Package)
-		} else {
-			i.pkg = NewPackage(path)
-			i.pkg.IsImport = true
-			f.p.Imports.Add(i.pkg)
-		}
+func (f *File) Inspect() (err error) {
+	if err = f.InspectValues(); err != nil {
+		return err
 	}
-	return
+	if err = f.InspectTypes(); err != nil {
+		return err
+	}
+	if err = f.InspectFuncs(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (f *File) InspectValues() (err error) {
 	var priorSpec *ast.ValueSpec
 	var priorType *Type
-	for i, x := range f.p.Values.List() {
-		v := x.(*Value)
-		if v.typ = f.TypeExpr(v.spec.Type); v.typ != nil {
-			v.typ.name = v.name
-		}
-	}
-	return
-}
+	for i, vals := 0, f.p.Values.List(); i < len(vals); i++ {
 
-// InspectValues inspects the value declarations in the file and
-// adds them to the package.
-func (f *File) InspectValuesOld(k byte, specs []ast.Spec) (err error) {
-
-	// the prior type is used when only one type
-	// is used for a var or const declaration.
-	var priorType *Type
-
-	// iterate through specs and create values for each
-	for _, s := range specs {
-
-		// assert value spec
-		var vals = s.(*ast.ValueSpec)
-		var num = len(vals.Names)
-		var names = make([]*ast.Ident, num)
-
-		// check if the value has already been
-		// added to the package, if so, skip it
-		for i, n := range vals.Names {
-			if f.p.Values.Get(n.Name) == nil {
-				names[i] = n
-				continue
-			}
-			num--
-		}
-		if num == 0 {
+		// assert value and skip if not in file
+		v := vals[i].(*Value)
+		if v.file != f {
 			continue
 		}
 
@@ -274,92 +248,56 @@ func (f *File) InspectValuesOld(k byte, specs []ast.Spec) (err error) {
 		// the prior declared type will set the
 		// type of this value if there are no
 		// assginment expressions in this value.
-		var typ *Type
-		if vals.Type != nil {
-			typ = f.TypeExpr(vals.Type)
-			priorType = typ
-		} else if priorType != nil && len(vals.Values) == 0 {
-			typ = priorType
+		switch {
+		case v.spec.Type != nil:
+			v.typ = f.TypeExpr(v.spec.Type)
+			priorSpec, priorType = v.spec, v.typ
+			continue
+		case v.spec == priorSpec && priorType != nil:
+			v.typ = priorType
+			continue
 		}
+
+		priorType = nil
+		v.typ = f.TypeExpr(v.spec.Values[v.indx])
 
 		// if the type is not declared and the value
-		// is function call, store the output types
-		// to be applied to the ValueSpec.Values
-		var types []*Type
-		if typ == nil && len(vals.Values) == 1 {
-			types = make([]*Type, num)
-			if typ = f.TypeExpr(vals.Values[0]); typ != nil && typ.kind == FUNC && typ.object != nil {
-				if f := typ.object.(*Func); f.out.Len() == 1 {
-					typ = f.out.Index(0).(*Type)
-				} else {
-					for i, t := range typ.object.(*Func).out.List() {
-						types[i] = t.(*Type)
-					}
+		// is function call, iterate through the output
+		// types and add them to the value types
+		if len(v.spec.Values) == 1 && v.typ != nil && v.typ.kind == FUNC && v.typ.object != nil {
+			l := v.typ.object.(*Func).out.Len() - 1
+			for j, t := range v.typ.object.(*Func).out.List() {
+				v := vals[i+j].(*Value)
+				if v.indx == j {
+					v.typ = t.(*Type)
 				}
 			}
+			i += l
 		}
-
-		// iterate through and create value for each named
-		// value in the value spec, using the declared type
-		// if it exists, or deriving the type from the
-		// value expression if it exists.
-		for i, n := range names {
-
-			// if value already exists, name will be nil
-			// so skip it and continue to the next value
-			if n == nil {
-				continue
-			}
-
-			// create and add value to package
-			val := &Value{file: f, kind: k, name: n.Name}
-			f.p.Values.Add(val)
-
-			// set value type if already declared
-			// or derrived from function call output,
-			// otherwise derive it from value expression
-			switch {
-			case typ != nil:
-				val.typ = typ
-			case len(types) > i:
-				val.typ = types[i]
-			case len(vals.Values) > i:
-				val.typ = f.TypeExpr(vals.Values[i])
-
-			}
-
-			// TODO: remove this after testing
-			// print test
-			f.PrintValue(val)
-		}
-
 	}
 	return
 }
 
-func (f *File) InspectValueOld(k byte, v *ast.ValueSpec) (err error) {
-	return f.InspectValuesOld(k, []ast.Spec{v})
-}
-
-// TODO: remove this after testing
-func (f *File) PrintValue(v *Value) {
-	var tname string
-	var tkind byte
-	if v.typ != nil {
-		tname = v.typ.name
-		tkind = v.typ.kind
-	}
-	fmt.Println("VALUE:",
-		v.kind,
-		v.name,
-		tname,
-		tkind,
-	)
-}
-
 func (f *File) InspectTypes() (err error) {
 	for _, x := range f.p.Types.List() {
+
+		// assert type and skip if not in file
 		t := x.(*Type)
+		if t.file != f {
+			continue
+		}
+
+		// if type has TypeParams, inspect them first
+		// and add them to the package decl Types
+		if t.spec.TypeParams != nil {
+			types := data.Make[*Type](t.spec.TypeParams.NumFields())
+			types.SetKey(t.name)
+			f.TypeParams(t.spec.TypeParams, types)
+			f.p.dTypes.Add(types)
+		}
+
+		// inspect type expression and update
+		// type with kind and object
 		typ := f.TypeExpr(t.spec.Type)
 		t.kind = typ.kind
 		t.object = typ.object
@@ -367,71 +305,18 @@ func (f *File) InspectTypes() (err error) {
 	return
 }
 
-func (f *File) InspectTypesOld(specs []ast.Spec) (err error) {
+func (f *File) InspectFuncs() (err error) {
+	for _, x := range f.p.Funcs.List() {
 
-	// iterate through specs and create types
-	// for each item in type declaration
-	for _, s := range specs {
-
-		// assert type spec
-		t := s.(*ast.TypeSpec)
-
-		// skip if type already exists
-		if f.p.Types.Get(t.Name.Name) != nil {
+		// assert func and skip if not in file
+		fn := x.(*Func)
+		if fn.file != f {
 			continue
 		}
 
-		// create and add type to package
-		typ := f.TypeExpr(t.Type)
-		typ.name = t.Name.Name
-		f.p.Types.Add(typ)
-
-		// TODO: remove this after testing
-		// print test
-		f.PrintType(typ)
-	}
-
-	return
-}
-
-func (f *File) InspectTypeOld(t *ast.TypeSpec) (err error) {
-	return f.InspectTypesOld([]ast.Spec{t})
-}
-
-// TODO: remove this after testing
-func (f *File) PrintType(t *Type) {
-	var objelem string
-	var objlen int
-	if t.object != nil {
-		switch t.kind {
-		case ARRAY:
-			objelem = t.object.(*Array).elem.name
-			objlen = t.object.(*Array).len
-		case CHAN:
-			objelem = t.object.(*Chan).elem.name
-		case POINTER:
-			objelem = t.object.(*Pointer).elem.name
-		case MAP:
-			objelem = t.object.(*Map).elem.name + ":" + t.object.(*Map).elem.name
-		case STRUCT:
-			objlen = t.object.(*Struct).fields.Len()
-		case INTERFACE:
-			objlen = t.object.(*Interface).methods.Len()
-		case FUNC:
-			objlen = t.object.(*Func).in.Len() + t.object.(*Func).out.Len()
-		}
-	}
-	fmt.Println("TYPE:",
-		t.name,
-		t.kind,
-		objelem,
-		objlen,
-	)
-}
-
-func (f *File) InspectFuncs() (err error) {
-	for _, x := range f.p.Funcs.List() {
-		fn := x.(*Func)
+		// create new type using function spec type
+		// and replace the package function with the
+		// new function type
 		typ := f.TypeFunc(fn.spec.Type)
 		fnc := typ.object.(*Func)
 		fnc.name = fn.name
@@ -461,59 +346,11 @@ func (f *File) InspectFuncs() (err error) {
 // ----------------------------------------------------------------------------
 // Type Evaluation Methods
 
-// GetType returns the type of the name provided by first checking
-// builtin types, then declared types, and lastly inspecting the
-// ident object if it exists.
-func (f *File) GetType(name string) (typ *Type, err error) {
-
-	// check builtin types
-	if t := BuiltinTypes.Get(name); t != nil {
-		return t.(*Type), nil
-	}
-
-	// check declared types
-	// TODO: if declared type has not been parsed,
-	// follow the ident object to import the
-	// declared type in the current package
-	if t := f.p.Types.Get(name); t != nil {
-		return t.(*Type), nil
-	}
-
-	// if an imported type, get the type from the
-	// imported package and return it. if the imported
-	// package has not been parsed, parse it and return
-	// the type if it exists.
-	if parts := strings.Split(name, "."); len(parts) > 1 {
-		// get imported package if type contains a period
-		if imp := f.i.Get(parts[0]); imp != nil {
-			i := imp.(*Import)
-			// get type from imported package
-			t := i.pkg.Types.Get(parts[1])
-			if t == nil {
-				if err = i.pkg.Parse(); err != nil {
-					return
-				}
-				t = i.pkg.Types.Get(parts[1])
-			}
-			if t != nil {
-				return t.(*Type), nil
-			}
-		}
-		return nil, ErrNotType
-	}
-
-	// TODO: parse complex data types by
-	// cascading through the type Ident and
-	// fetching or parsing the type component
-	// and add them to the package types
-
-	return nil, nil
-}
-
 func (f *File) TypeExpr(e ast.Expr) *Type {
 	// TODO: evaluate need for the following expressions:
 	// *ast.IndexExpr:
 	// *ast.SliceExpr:
+	fmt.Println("EXPR:", reflect.TypeOf(e))
 	switch t := e.(type) {
 	case *ast.BasicLit:
 		// literal expression of int, float, rune, string
@@ -551,7 +388,7 @@ func (f *File) TypeExpr(e ast.Expr) *Type {
 	case *ast.TypeAssertExpr:
 		return f.TypeExpr(t.Type)
 	}
-	fmt.Println("EXPR:", reflect.TypeOf(e))
+	fmt.Println("UNKNOWN EXPR:", reflect.TypeOf(e))
 	return nil
 }
 
@@ -602,12 +439,23 @@ func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
 		//}
 		return
 	}
-	fmt.Println("IDENT:", i.Name, "NOT FOUND")
-	fmt.Println(i.Obj)
-	fmt.Println(len(f.t.Decls))
+	fmt.Println("IDENT NOT FOUND:", f.p.Name+"."+i.Name, "  OBJ:", i.Obj)
+	fmt.Println("  PKG DECLS:", len(f.t.Decls), "CAPTURED:", f.p.Imports.Len()+f.p.Values.Len()+f.p.Types.Len()+f.p.Funcs.Len())
+	for _, x := range f.p.Values.List() {
+		v := x.(*Value)
+		fmt.Println("  VALUE:", v.kind, v.name, v.typ)
+	}
+	for _, x := range f.p.Types.List() {
+		t := x.(*Type)
+		fmt.Println("  TYPE:", t.name, t.kind, t.object)
+	}
+	for _, x := range f.p.Funcs.List() {
+		fn := x.(*Func)
+		fmt.Println("  FUNC:", fn.name, fn.typ)
+	}
 	// if ident is not in types and has an object,
 	// inspect the object and return the type
-	if i.Obj != nil {
+	/* if i.Obj != nil {
 		switch i.Obj.Kind {
 		case ast.Var:
 			if err := f.InspectValue(VAR, i.Obj.Decl.(*ast.ValueSpec)); err == nil {
@@ -626,7 +474,7 @@ func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
 				return f.p.Funcs.Get(i.Name).(*Func).typ
 			}
 		}
-	}
+	} */
 	return
 }
 
@@ -693,8 +541,8 @@ func (f *File) TypeFuncLit(fn *ast.FuncLit) (typ *Type) {
 		object: fnc,
 	}
 	fnc.typ = typ
-	f.TypeFuncParams(fn.Type.Params, fnc.in)
-	f.TypeFuncParams(fn.Type.Results, fnc.out)
+	f.TypeParams(fn.Type.Params, fnc.in)
+	f.TypeParams(fn.Type.Results, fnc.out)
 	return
 }
 
@@ -715,15 +563,15 @@ func (f *File) TypeFunc(fn *ast.FuncType) (typ *Type) {
 	fnc.typ = typ
 
 	// build and add func inputs and outputs
-	f.TypeFuncParams(fn.Params, fnc.in)
-	f.TypeFuncParams(fn.Results, fnc.out)
+	f.TypeParams(fn.Params, fnc.in)
+	f.TypeParams(fn.Results, fnc.out)
 
 	return
 }
 
 // TypeFuncParams adds the type of the function
 // parameters provided to the data list provided.
-func (f *File) TypeFuncParams(from *ast.FieldList, to *data.Data) {
+func (f *File) TypeParams(from *ast.FieldList, to *data.Data) {
 	if from != nil {
 		for _, field := range from.List {
 			t := f.TypeExpr(field.Type)
