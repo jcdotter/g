@@ -37,6 +37,7 @@ type S struct {
 type T struct {
 	X string
 	Y S
+	Z []Any
 }
 
 func (t T) C() any {
@@ -54,7 +55,10 @@ var C = func() T { return B }
 func D() T { return B }
 
 var X = A.X
+
 var N = data.IndexMin
+
+type Any interface{ Key() string }
 
 //var M = strings.Index("string", "s")
 

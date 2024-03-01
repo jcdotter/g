@@ -67,14 +67,15 @@ func (e *entity) String() string {
 // contains the package content, metadata, and
 // references to the package files and imported packages.
 type Package struct {
-	Name    string     // the full package name
-	Path    string     // the local directory where the package is located
-	Imports *data.Data // the packages imported in the files
-	Files   *data.Data // the files in the package
-	Values  *data.Data // the declared values in the package
-	Types   *data.Data // the declared types in the package
-	Funcs   *data.Data // the declared functions in the package
-	i       bool       // the package has been inspected
+	Name      string     // the full package name
+	Path      string     // the local directory where the package is located
+	Imports   *data.Data // the packages imported in the files
+	Files     *data.Data // the files in the package
+	Values    *data.Data // the declared values in the package
+	Types     *data.Data // the declared types in the package
+	Funcs     *data.Data // the declared functions in the package
+	IsImport  bool       // the package is an import
+	Inspected bool       // the package has been inspected
 }
 
 func NewPackage(pkgPath string) *Package {

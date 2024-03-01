@@ -51,7 +51,7 @@ func (p *Package) Inspect() (err error) {
 			return
 		}
 	}
-	p.i = true
+	p.Inspected = true
 	return
 }
 
@@ -61,7 +61,6 @@ func (p *Package) Inspect() (err error) {
 func (p *Package) Parse() (err error) {
 	// TODO: Make file parsing concurrent.
 
-	fmt.Println("PARSING PACKAGE:", p.Path, path.Files(p.Path))
 	// parse each file in the package
 	for _, f := range path.Files(p.Path) {
 		if IsGoFile(f) {
@@ -89,33 +88,18 @@ func (p *Package) Parse() (err error) {
 	// parse package name
 	if p.Files.Len() > 0 {
 		p.Name = p.Files.Index(0).(*File).t.Name.Name
-		fmt.Println("PACKAGE NAME:", p.Name)
 	}
 	return
 }
 
 // TypeIdent returns the type of the identifier in the package
 func (p *Package) TypeIdent(ident string) (typ *Type) {
-	fmt.Println("PACKAGE IDENT:", ident)
-	fmt.Println(
-		"PKG NAME:", p.Name,
-		"PKG PATH:", p.Path,
-	)
 	// parse if package has not been parsed
-	if !p.i && p.Inspect() != nil {
+	if !p.Inspected && p.Inspect() != nil {
 		return
 	}
-	fmt.Println(
-		"PKG NAME:", p.Name,
-		"PKG PATH:", p.Path,
-		"PKG FILES:", p.Files.Len(),
-		"PKG VALUES:", p.Values.Len(),
-		"PKG TYPES:", p.Types.Len(),
-		"PKG FUNCS:", p.Funcs.Len(),
-	)
 	// check declared values, types, funcs for ident
 	if v := p.Values.Get(ident); v != nil {
-		fmt.Println("PACKAGE IDENT VALUE:", ident)
 		return v.(*Value).typ
 	}
 	if t := p.Types.Get(ident); t != nil {
@@ -124,7 +108,6 @@ func (p *Package) TypeIdent(ident string) (typ *Type) {
 	if f := p.Funcs.Get(ident); f != nil {
 		return f.(*Func).typ
 	}
-	fmt.Println("COULD NOT FUND PACKAGE IDENT")
 	return
 }
 
@@ -176,6 +159,7 @@ func (f *File) InspectImports(specs []ast.Spec) (err error) {
 				imp.pkg = pkg.(*Package)
 			} else {
 				imp.pkg = NewPackage(pkgPath)
+				imp.pkg.IsImport = true
 				f.p.Imports.Add(imp.pkg)
 			}
 		}
@@ -522,18 +506,26 @@ func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
 	// if ident is an import, parse the imported package
 	// and return teh imported package as a type
 	if imp := f.i.Get(i.Name); imp != nil {
-		p := imp.(*Import).pkg
-		if !p.i && p.Inspect() != nil {
-			return
+		typ = &Type{
+			file: f,
+			kind: PACKAGE,
+			imp:  imp.(*Import),
+			name: imp.(*Import).name,
 		}
-		return &Type{
-			file:   f,
-			kind:   PACKAGE,
-			name:   imp.(*Import).name,
-			object: p,
+		// only inspect the first depth level of imported packages,
+		// for deeper dependencies, inspect the package when a
+		// declaration from the package is encountered. See
+		// TypeSelector and TypeIndex for more reference.
+		if !f.p.IsImport {
+			if p := imp.(*Import).pkg; p.Inspected || p.Inspect() == nil {
+				typ.object = p
+			}
 		}
+		return
 	}
-
+	fmt.Println("IDENT:", i.Name, "NOT FOUND")
+	fmt.Println(i.Obj)
+	fmt.Println(len(f.t.Decls))
 	// if ident is not in types and has an object,
 	// inspect the object and return the type
 	if i.Obj != nil {
@@ -675,6 +667,8 @@ func (f *File) TypeArray(a *ast.ArrayType) (typ *Type) {
 		object: arr,
 	}
 	arr.typ = typ
+	/* fmt.Println("ARRAY:", a.Elt.(*ast.Ident).Name)
+	os.Exit(1) */
 	if a.Len == nil {
 		typ.kind = SLICE
 		typ.name = "[]" + arr.elem.name
@@ -771,7 +765,7 @@ func (f *File) TypeIterface(i *ast.InterfaceType) (typ *Type) {
 		if t := f.TypeExpr(field.Type); t != nil && t.kind == FUNC {
 			if ftyp := f.TypeFunc(field.Type.(*ast.FuncType)); ftyp != nil {
 				ftyp.object.(*Func).name = field.Names[0].Name
-				intr.methods.Add(ftyp)
+				intr.methods.Add(ftyp.object.(*Func))
 			}
 		}
 	}
@@ -806,42 +800,22 @@ func (f *File) TypeChan(c *ast.ChanType) (typ *Type) {
 // Typically used for call to an external package function, value or
 // type or call to internal package method or struct field
 func (f *File) TypeSelector(s *ast.SelectorExpr) (typ *Type) {
-	// TODO: implement selector expression
-	// if X is an import, get the type from the imported package
-	// else check types and functions in the current package
-	/* if i, ok := s.X.(*ast.Ident); ok && i.Obj != nil {
-		if i.Obj.Kind == ast.Pkg {
-			// get imported package if type contains a period
-			if imp := f.i.Get(i.Name); imp != nil {
-				i := imp.(*Import)
-				// get type from imported package
-				t := i.pkg.Types.Get(s.Sel.Name)
-				if t == nil {
-					if err := i.pkg.Parse(); err != nil {
-						return
-					}
-					t = i.pkg.Types.Get(s.Sel.Name)
-				}
-				if t != nil {
-					return t.(*Type)
-				}
-			}
-			return nil
-		}
-	} */
-
 	// TODO: know if a func call or a func assigned to a variable
 	// TODO: could have in indexExpr rather than selectorExpr
 
+	// Type{file: current file, kind: package, object: imported package}
+	//   |-- Type{file: import file, kind: struct}
+	//   |-- Type{file: import file, kind: struct}
+	//   |     |-- Field{of: Type, typ: Type}
+	//   |     |-- Field{of: Type, typ: Type}
+
 	idents := append(f.IdentExpr(s.X), s.Sel)
-	f.PrintSelector(idents) // TODO: remove
 	if typ = f.TypeIdent(idents[0]); typ != nil {
-		fmt.Println("IDENT LEN:", len(idents))
 		for i := 1; i < len(idents); i++ {
-			fmt.Println(reflect.TypeOf(typ.object)) // TODO: remove
 			typ = f.TypeIdentKey(typ, idents[i].Name)
 		}
 	}
+	f.PrintSelector(idents) // TODO: remove
 	return
 }
 
@@ -861,28 +835,37 @@ func (f *File) PrintSelector(i []*ast.Ident) {
 }
 
 func (f *File) TypeIdentKey(t *Type, key string) (typ *Type) {
-	fmt.Println("TypeIdentKey:", t.name, key)
-	if t != nil && t.object != nil {
-		switch t := t.object.(type) {
-		case *Struct:
-			return t.fields.Get(key).(*Field).typ
-		case *Package:
-			return t.TypeIdent(key)
-		case *Func:
-			i := &ast.Ident{Name: t.out.Index(0).Key()}
-			tt := f.TypeIdent(i)
-			return f.TypeIdentKey(tt, key)
-		case *Map:
-			return t.elem
-		case *Array:
-			return t.elem
+	if t != nil {
+		if t.object != nil {
+			switch t := t.object.(type) {
+			case *Struct:
+				return t.fields.Get(key).(*Field).typ
+			case *Package:
+				return t.TypeIdent(key)
+			case *Func:
+				i := &ast.Ident{Name: t.out.Index(0).Key()}
+				tt := f.TypeIdent(i)
+				return f.TypeIdentKey(tt, key)
+			case *Map:
+				return t.elem
+			case *Array:
+				return t.elem
+			}
+		}
+		if t.kind == PACKAGE {
+			return &Type{
+				imp:  t.imp,
+				name: key,
+			}
+		}
+		if t.kind == 0 && t.imp != nil {
+			return t.imp.pkg.TypeIdent(key)
 		}
 	}
 	return
 }
 
 func (f *File) IdentExpr(e ast.Expr) (i []*ast.Ident) {
-	fmt.Println("IDENT EXPR:", reflect.TypeOf(e))
 	switch x := e.(type) {
 	case *ast.Ident:
 		return []*ast.Ident{x}

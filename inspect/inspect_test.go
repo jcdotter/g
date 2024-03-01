@@ -22,10 +22,10 @@ import (
 
 func TestAst(t *testing.T) {
 	var err error
-	p := NewPackage("inspect")
-	p.Name = "inspect"
-	f := NewFile(p, "sample_test")
-	f.t, err = parser.ParseFile(token.NewFileSet(), "sample_test.go", nil, 0)
+	p := NewPackage("github.com/jcdotter/go/data")
+	p.Name = "data"
+	f := NewFile(p, "data")
+	f.t, err = parser.ParseFile(token.NewFileSet(), "../data/data.go", nil, 0)
 	if err != nil {
 		return
 	}
