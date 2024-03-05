@@ -292,6 +292,7 @@ func (f *File) InspectTypes() (err error) {
 		typ := f.TypeExpr(t.spec.Type, t.spec.TypeParams)
 		t.kind = typ.kind
 		t.object = typ.object
+		fmt.Println("INSPECT TYPE:", t.name)
 	}
 	return
 }
@@ -308,7 +309,7 @@ func (f *File) InspectFuncs() (err error) {
 		// create new type using function spec type
 		// and replace the package function with the
 		// new function type
-		typ := f.TypeFunc(fn.spec.Type)
+		typ := f.TypeFunc(fn.spec.Type, nil)
 		fnc := typ.object.(*Func)
 		fnc.name = fn.name
 		fnc.spec = fn.spec
@@ -319,7 +320,7 @@ func (f *File) InspectFuncs() (err error) {
 		// add the function as a method to the receiver
 		if fn.spec.Recv != nil {
 			if len(fn.spec.Recv.List) == 1 {
-				fmt.Println("RECEIVER:", fn.spec.Recv.List[0].Names[0].Name, fn.spec.Recv.List[0].Type, fn.name)
+				//fmt.Println("RECEIVER:", fn.spec.Recv.List[0].Names[0].Name, fn.spec.Recv.List[0].Type, fn.name)
 				if i := fn.spec.Recv.List[0].Names; len(i) == 1 {
 					if rtyp := f.TypeExpr(fn.spec.Recv.List[0].Type, nil); rtyp != nil {
 						fn.of = rtyp
@@ -360,9 +361,9 @@ func (f *File) TypeExpr(e ast.Expr, p *ast.FieldList) *Type {
 	case *ast.CallExpr:
 		return f.TypeExpr(t.Fun, p)
 	case *ast.FuncLit:
-		return f.TypeFuncLit(t)
+		return f.TypeFuncLit(t, p)
 	case *ast.FuncType:
-		return f.TypeFunc(t)
+		return f.TypeFunc(t, p)
 	case *ast.CompositeLit:
 		return f.TypeExpr(t.Type, p)
 	case *ast.ArrayType:
@@ -391,12 +392,14 @@ func (f *File) TypeIdent(i *ast.Ident, x *ast.FieldList) (typ *Type) {
 
 	// check decl spec type if it exists
 	if x != nil {
+		fmt.Println("PARAMS:", len(x.List))
 		for _, field := range x.List {
 			if len(field.Names) == 0 {
 				return f.TypeExpr(field.Type, x)
 			}
 			for _, n := range field.Names {
 				if n.Name == i.Name {
+					fmt.Println("PARAM:", f.TypeExpr(field.Type, x))
 					return f.TypeExpr(field.Type, x)
 				}
 			}
@@ -538,7 +541,7 @@ func (f *File) TypeBinary(b *ast.BinaryExpr, x *ast.FieldList) (typ *Type) {
 
 // TypeFunc returns the type of the function literal provided.
 // Typically used for assigning a function literal to a variable.
-func (f *File) TypeFuncLit(fn *ast.FuncLit) (typ *Type) {
+func (f *File) TypeFuncLit(fn *ast.FuncLit, x *ast.FieldList) (typ *Type) {
 	// TODO: implement function literal as a function in the package.
 	// currently only stored as a value in the package.
 	fnc := &Func{file: f}
@@ -548,13 +551,24 @@ func (f *File) TypeFuncLit(fn *ast.FuncLit) (typ *Type) {
 		object: fnc,
 	}
 	fnc.typ = typ
-	f.TypeParams(fn.Type.Params, fnc.in, fn.Type.TypeParams)
-	f.TypeParams(fn.Type.Results, fnc.out, fn.Type.TypeParams)
+	params := JoinFields(x, fn.Type.TypeParams)
+	f.TypeParams(fn.Type.Params, fnc.in, params)
+	f.TypeParams(fn.Type.Results, fnc.out, params)
 	return
 }
 
+func JoinFields(a, b *ast.FieldList) *ast.FieldList {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	return &ast.FieldList{List: append(a.List, b.List...)}
+}
+
 // TypeFunc returns the type of the function expression provided.
-func (f *File) TypeFunc(fn *ast.FuncType) (typ *Type) {
+func (f *File) TypeFunc(fn *ast.FuncType, x *ast.FieldList) (typ *Type) {
 
 	// set up function type
 	fnc := &Func{
@@ -568,10 +582,17 @@ func (f *File) TypeFunc(fn *ast.FuncType) (typ *Type) {
 		object: fnc,
 	}
 	fnc.typ = typ
+	params := JoinFields(x, fn.TypeParams)
+
+	if fn.TypeParams != nil {
+		for _, t := range fn.TypeParams.List {
+			fmt.Println("TYPEPARAM:", t.Names[0].Name, t.Type)
+		}
+	}
 
 	// build and add func inputs and outputs
-	f.TypeParams(fn.Params, fnc.in, fn.TypeParams)
-	f.TypeParams(fn.Results, fnc.out, fn.TypeParams)
+	f.TypeParams(fn.Params, fnc.in, params)
+	f.TypeParams(fn.Results, fnc.out, params)
 
 	return
 }
@@ -607,6 +628,9 @@ func (f *File) TypeArray(a *ast.ArrayType, x *ast.FieldList) (typ *Type) {
 	} else if _, ok := a.Len.(*ast.Ellipsis); ok {
 		typ.kind = ELIPS
 		typ.name = "..." + arr.elem.name
+	} else if _, ok := a.Len.(*ast.BinaryExpr); ok {
+		typ.kind = ARRAY
+		typ.name = "[x]" + arr.elem.name
 	} else {
 		typ.kind = ARRAY
 		l := a.Len.(*ast.BasicLit).Value
@@ -695,7 +719,7 @@ func (f *File) TypeIterface(i *ast.InterfaceType, x *ast.FieldList) (typ *Type) 
 
 		// if interface field is a func, add it to the interface
 		if t := f.TypeExpr(field.Type, x); t != nil && t.kind == FUNC {
-			if ftyp := f.TypeFunc(field.Type.(*ast.FuncType)); ftyp != nil {
+			if ftyp := f.TypeFunc(field.Type.(*ast.FuncType), x); ftyp != nil {
 				ftyp.object.(*Func).name = field.Names[0].Name
 				intr.methods.Add(ftyp.object.(*Func))
 			}
