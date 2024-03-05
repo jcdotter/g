@@ -250,7 +250,7 @@ func (f *File) InspectValues() (err error) {
 		// assginment expressions in this value.
 		switch {
 		case v.spec.Type != nil:
-			v.typ = f.TypeExpr(v.spec.Type)
+			v.typ = f.TypeExpr(v.spec.Type, nil)
 			priorSpec, priorType = v.spec, v.typ
 			continue
 		case v.spec == priorSpec && priorType != nil:
@@ -259,7 +259,7 @@ func (f *File) InspectValues() (err error) {
 		}
 
 		priorType = nil
-		v.typ = f.TypeExpr(v.spec.Values[v.indx])
+		v.typ = f.TypeExpr(v.spec.Values[v.indx], nil)
 
 		// if the type is not declared and the value
 		// is function call, iterate through the output
@@ -287,18 +287,9 @@ func (f *File) InspectTypes() (err error) {
 			continue
 		}
 
-		// if type has TypeParams, inspect them first
-		// and add them to the package decl Types
-		if t.spec.TypeParams != nil {
-			types := data.Make[*Type](t.spec.TypeParams.NumFields())
-			types.SetKey(t.name)
-			f.TypeParams(t.spec.TypeParams, types)
-			f.p.dTypes.Add(types)
-		}
-
 		// inspect type expression and update
 		// type with kind and object
-		typ := f.TypeExpr(t.spec.Type)
+		typ := f.TypeExpr(t.spec.Type, t.spec.TypeParams)
 		t.kind = typ.kind
 		t.object = typ.object
 	}
@@ -328,13 +319,14 @@ func (f *File) InspectFuncs() (err error) {
 		// add the function as a method to the receiver
 		if fn.spec.Recv != nil {
 			if len(fn.spec.Recv.List) == 1 {
+				fmt.Println("RECEIVER:", fn.spec.Recv.List[0].Names[0].Name, fn.spec.Recv.List[0].Type, fn.name)
 				if i := fn.spec.Recv.List[0].Names; len(i) == 1 {
-					if rtyp := f.TypeExpr(fn.spec.Recv.List[0].Type); rtyp != nil {
+					if rtyp := f.TypeExpr(fn.spec.Recv.List[0].Type, nil); rtyp != nil {
 						fn.of = rtyp
 						if rtyp.kind == POINTER {
 							rtyp = rtyp.object.(*Pointer).elem
 						}
-						rtyp.object.(*Struct).methods.Add(fn)
+						rtyp.methods.Add(fn)
 					}
 				}
 			}
@@ -346,7 +338,7 @@ func (f *File) InspectFuncs() (err error) {
 // ----------------------------------------------------------------------------
 // Type Evaluation Methods
 
-func (f *File) TypeExpr(e ast.Expr) *Type {
+func (f *File) TypeExpr(e ast.Expr, p *ast.FieldList) *Type {
 	// TODO: evaluate need for the following expressions:
 	// *ast.IndexExpr:
 	// *ast.SliceExpr:
@@ -356,37 +348,37 @@ func (f *File) TypeExpr(e ast.Expr) *Type {
 		// literal expression of int, float, rune, string
 		return TypeToken(t.Kind)
 	case *ast.ParenExpr:
-		return f.TypeExpr(t.X)
+		return f.TypeExpr(t.X, p)
 	case *ast.Ident:
-		return f.TypeIdent(t)
+		return f.TypeIdent(t, p)
 	case *ast.StarExpr:
-		return f.TypePointer(t)
+		return f.TypePointer(t, p)
 	case *ast.UnaryExpr:
-		return f.TypeUnary(t)
+		return f.TypeUnary(t, p)
 	case *ast.BinaryExpr:
-		return f.TypeBinary(t)
+		return f.TypeBinary(t, p)
 	case *ast.CallExpr:
-		return f.TypeExpr(t.Fun)
+		return f.TypeExpr(t.Fun, p)
 	case *ast.FuncLit:
 		return f.TypeFuncLit(t)
 	case *ast.FuncType:
 		return f.TypeFunc(t)
 	case *ast.CompositeLit:
-		return f.TypeExpr(t.Type)
+		return f.TypeExpr(t.Type, p)
 	case *ast.ArrayType:
-		return f.TypeArray(t)
+		return f.TypeArray(t, p)
 	case *ast.MapType:
-		return f.TypeMap(t)
+		return f.TypeMap(t, p)
 	case *ast.StructType:
-		return f.TypeStruct(t)
+		return f.TypeStruct(t, p)
 	case *ast.InterfaceType:
-		return f.TypeIterface(t)
+		return f.TypeIterface(t, p)
 	case *ast.ChanType:
-		return f.TypeChan(t)
+		return f.TypeChan(t, p)
 	case *ast.SelectorExpr:
-		return f.TypeSelector(t)
+		return f.TypeSelector(t, p)
 	case *ast.TypeAssertExpr:
-		return f.TypeExpr(t.Type)
+		return f.TypeExpr(t.Type, p)
 	}
 	fmt.Println("UNKNOWN EXPR:", reflect.TypeOf(e))
 	return nil
@@ -395,7 +387,21 @@ func (f *File) TypeExpr(e ast.Expr) *Type {
 // TypeIdent returns the type of the identifier in the file
 // by first checking builtin values, then declared types,
 // and lastly inspecting the ident object if it exists.
-func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
+func (f *File) TypeIdent(i *ast.Ident, x *ast.FieldList) (typ *Type) {
+
+	// check decl spec type if it exists
+	if x != nil {
+		for _, field := range x.List {
+			if len(field.Names) == 0 {
+				return f.TypeExpr(field.Type, x)
+			}
+			for _, n := range field.Names {
+				if n.Name == i.Name {
+					return f.TypeExpr(field.Type, x)
+				}
+			}
+		}
+	}
 
 	// check builtin values, types, funcs
 	if v := BuiltinValues.Get(i.Name); v != nil {
@@ -478,6 +484,7 @@ func (f *File) TypeIdent(i *ast.Ident) (typ *Type) {
 	return
 }
 
+// TODO: rework if receiver changed to *Type from *File
 // typePointer returns the pointer type of the type provided.
 func (f *File) typePointer(t *Type) (typ *Type) {
 	if t != nil {
@@ -498,35 +505,35 @@ func (f *File) typePointer(t *Type) (typ *Type) {
 }
 
 // TypePointer returns the pointer type of the type provided.
-func (f *File) TypePointer(p *ast.StarExpr) (typ *Type) {
-	return f.typePointer(f.TypeExpr(p.X))
+func (f *File) TypePointer(p *ast.StarExpr, x *ast.FieldList) (typ *Type) {
+	return f.typePointer(f.TypeExpr(p.X, x))
 }
 
 // TypeUnary returns the unary type of the type provided.
 // Typically used for &Expr expressions.
-func (f *File) TypeUnary(u *ast.UnaryExpr) (typ *Type) {
+func (f *File) TypeUnary(u *ast.UnaryExpr, x *ast.FieldList) (typ *Type) {
 	switch u.Op {
 	case token.AND:
-		return f.typePointer(f.TypeExpr(u.X))
+		return f.typePointer(f.TypeExpr(u.X, x))
 	}
 	return
 }
 
 // TypeBinary returns the binary type of the types provided.
 // Typically used for equation expressions (0+0 or ""+"").
-func (f *File) TypeBinary(b *ast.BinaryExpr) (typ *Type) {
+func (f *File) TypeBinary(b *ast.BinaryExpr, x *ast.FieldList) (typ *Type) {
 	// return type of the left expression if it is not
 	// a basic literal. Go only adapts the type of basic
 	// literals, so we can assume the type of a non-basic
 	// literal is the type of the binary expression.
-	x := b.X
-	if p, ok := x.(*ast.ParenExpr); ok {
-		x = p.X
+	e := b.X
+	if p, ok := e.(*ast.ParenExpr); ok {
+		e = p.X
 	}
-	if _, ok := x.(*ast.BasicLit); !ok {
-		return f.TypeExpr(x)
+	if _, ok := e.(*ast.BasicLit); !ok {
+		return f.TypeExpr(e, x)
 	}
-	return f.TypeExpr(b.Y)
+	return f.TypeExpr(b.Y, x)
 }
 
 // TypeFunc returns the type of the function literal provided.
@@ -541,8 +548,8 @@ func (f *File) TypeFuncLit(fn *ast.FuncLit) (typ *Type) {
 		object: fnc,
 	}
 	fnc.typ = typ
-	f.TypeParams(fn.Type.Params, fnc.in)
-	f.TypeParams(fn.Type.Results, fnc.out)
+	f.TypeParams(fn.Type.Params, fnc.in, fn.Type.TypeParams)
+	f.TypeParams(fn.Type.Results, fnc.out, fn.Type.TypeParams)
 	return
 }
 
@@ -563,18 +570,18 @@ func (f *File) TypeFunc(fn *ast.FuncType) (typ *Type) {
 	fnc.typ = typ
 
 	// build and add func inputs and outputs
-	f.TypeParams(fn.Params, fnc.in)
-	f.TypeParams(fn.Results, fnc.out)
+	f.TypeParams(fn.Params, fnc.in, fn.TypeParams)
+	f.TypeParams(fn.Results, fnc.out, fn.TypeParams)
 
 	return
 }
 
 // TypeFuncParams adds the type of the function
 // parameters provided to the data list provided.
-func (f *File) TypeParams(from *ast.FieldList, to *data.Data) {
+func (f *File) TypeParams(from *ast.FieldList, to *data.Data, with *ast.FieldList) {
 	if from != nil {
 		for _, field := range from.List {
-			t := f.TypeExpr(field.Type)
+			t := f.TypeExpr(field.Type, with)
 			if len(field.Names) == 0 {
 				to.Add(t)
 				continue
@@ -587,15 +594,13 @@ func (f *File) TypeParams(from *ast.FieldList, to *data.Data) {
 }
 
 // TypeArray returns the type of the array expression provided.
-func (f *File) TypeArray(a *ast.ArrayType) (typ *Type) {
-	arr := &Array{elem: f.TypeExpr(a.Elt)}
+func (f *File) TypeArray(a *ast.ArrayType, x *ast.FieldList) (typ *Type) {
+	arr := &Array{elem: f.TypeExpr(a.Elt, x)}
 	typ = &Type{
 		file:   f,
 		object: arr,
 	}
 	arr.typ = typ
-	/* fmt.Println("ARRAY:", a.Elt.(*ast.Ident).Name)
-	os.Exit(1) */
 	if a.Len == nil {
 		typ.kind = SLICE
 		typ.name = "[]" + arr.elem.name
@@ -612,8 +617,8 @@ func (f *File) TypeArray(a *ast.ArrayType) (typ *Type) {
 }
 
 // TypeMap returns the type of the map expression provided.
-func (f *File) TypeMap(m *ast.MapType) (typ *Type) {
-	mp := &Map{key: f.TypeExpr(m.Key), elem: f.TypeExpr(m.Value)}
+func (f *File) TypeMap(m *ast.MapType, x *ast.FieldList) (typ *Type) {
+	mp := &Map{key: f.TypeExpr(m.Key, x), elem: f.TypeExpr(m.Value, x)}
 	typ = &Type{
 		file:   f,
 		kind:   MAP,
@@ -625,7 +630,7 @@ func (f *File) TypeMap(m *ast.MapType) (typ *Type) {
 }
 
 // TypeStruct returns the type of the struct expression provided.
-func (f *File) TypeStruct(s *ast.StructType) (typ *Type) {
+func (f *File) TypeStruct(s *ast.StructType, x *ast.FieldList) (typ *Type) {
 
 	// set up struct type
 	typ = &Type{
@@ -642,7 +647,7 @@ func (f *File) TypeStruct(s *ast.StructType) (typ *Type) {
 
 			// type and tag are at a field scoping level
 			// and may apply to multiple field names
-			ftyp := f.TypeExpr(field.Type)
+			ftyp := f.TypeExpr(field.Type, x)
 			ftag := ""
 			if field.Tag != nil {
 				ftag = field.Tag.Value
@@ -665,7 +670,7 @@ func (f *File) TypeStruct(s *ast.StructType) (typ *Type) {
 }
 
 // TypeIterface returns the type of the interface expression provided.
-func (f *File) TypeIterface(i *ast.InterfaceType) (typ *Type) {
+func (f *File) TypeIterface(i *ast.InterfaceType, x *ast.FieldList) (typ *Type) {
 
 	// if the interface has no methods,
 	// return an empty interface
@@ -689,7 +694,7 @@ func (f *File) TypeIterface(i *ast.InterfaceType) (typ *Type) {
 		}
 
 		// if interface field is a func, add it to the interface
-		if t := f.TypeExpr(field.Type); t != nil && t.kind == FUNC {
+		if t := f.TypeExpr(field.Type, x); t != nil && t.kind == FUNC {
 			if ftyp := f.TypeFunc(field.Type.(*ast.FuncType)); ftyp != nil {
 				ftyp.object.(*Func).name = field.Names[0].Name
 				intr.methods.Add(ftyp.object.(*Func))
@@ -701,9 +706,9 @@ func (f *File) TypeIterface(i *ast.InterfaceType) (typ *Type) {
 }
 
 // TypeChan returns the type of the chan expression provided.
-func (f *File) TypeChan(c *ast.ChanType) (typ *Type) {
+func (f *File) TypeChan(c *ast.ChanType, x *ast.FieldList) (typ *Type) {
 	cn := &Chan{
-		elem: f.TypeExpr(c.Value),
+		elem: f.TypeExpr(c.Value, x),
 		dir:  byte(c.Dir),
 	}
 	typ = &Type{
@@ -726,7 +731,7 @@ func (f *File) TypeChan(c *ast.ChanType) (typ *Type) {
 // TypeSelector returns the type of the selector expression provided.
 // Typically used for call to an external package function, value or
 // type or call to internal package method or struct field
-func (f *File) TypeSelector(s *ast.SelectorExpr) (typ *Type) {
+func (f *File) TypeSelector(s *ast.SelectorExpr, x *ast.FieldList) (typ *Type) {
 	// TODO: know if a func call or a func assigned to a variable
 	// TODO: could have in indexExpr rather than selectorExpr
 
@@ -736,10 +741,10 @@ func (f *File) TypeSelector(s *ast.SelectorExpr) (typ *Type) {
 	//   |     |-- Field{of: Type, typ: Type}
 	//   |     |-- Field{of: Type, typ: Type}
 
-	idents := append(f.IdentExpr(s.X), s.Sel)
-	if typ = f.TypeIdent(idents[0]); typ != nil {
+	idents := append(f.IdentExpr(s.X, x), s.Sel)
+	if typ = f.TypeIdent(idents[0], x); typ != nil {
 		for i := 1; i < len(idents); i++ {
-			typ = f.TypeIdentKey(typ, idents[i].Name)
+			typ = f.TypeIdentKey(typ, idents[i].Name, x)
 		}
 	}
 	f.PrintSelector(idents) // TODO: remove
@@ -761,7 +766,7 @@ func (f *File) PrintSelector(i []*ast.Ident) {
 	fmt.Println("SELC EXPR:", n)
 }
 
-func (f *File) TypeIdentKey(t *Type, key string) (typ *Type) {
+func (f *File) TypeIdentKey(t *Type, key string, x *ast.FieldList) (typ *Type) {
 	if t != nil {
 		if t.object != nil {
 			switch t := t.object.(type) {
@@ -771,8 +776,8 @@ func (f *File) TypeIdentKey(t *Type, key string) (typ *Type) {
 				return t.TypeIdent(key)
 			case *Func:
 				i := &ast.Ident{Name: t.out.Index(0).Key()}
-				tt := f.TypeIdent(i)
-				return f.TypeIdentKey(tt, key)
+				tt := f.TypeIdent(i, x)
+				return f.TypeIdentKey(tt, key, x)
 			case *Map:
 				return t.elem
 			case *Array:
@@ -793,30 +798,30 @@ func (f *File) TypeIdentKey(t *Type, key string) (typ *Type) {
 	return
 }
 
-func (f *File) IdentExpr(e ast.Expr) (i []*ast.Ident) {
-	switch x := e.(type) {
+func (f *File) IdentExpr(e ast.Expr, x *ast.FieldList) (i []*ast.Ident) {
+	switch t := e.(type) {
 	case *ast.Ident:
-		return []*ast.Ident{x}
+		return []*ast.Ident{t}
 	case *ast.SelectorExpr:
-		return append(f.IdentExpr(x.X), x.Sel)
+		return append(f.IdentExpr(t.X, x), t.Sel)
 	case *ast.ParenExpr:
-		return f.IdentExpr(x.X)
+		return f.IdentExpr(t.X, x)
 	case *ast.StarExpr:
-		return f.IdentExpr(x.X)
+		return f.IdentExpr(t.X, x)
 	case *ast.UnaryExpr:
-		return f.IdentExpr(x.X)
+		return f.IdentExpr(t.X, x)
 	case *ast.CallExpr:
-		return f.IdentExpr(x.Fun)
+		return f.IdentExpr(t.Fun, x)
 	case *ast.TypeAssertExpr:
-		return f.IdentExpr(x.Type)
+		return f.IdentExpr(t.Type, x)
 	case *ast.CompositeLit:
-		return f.IdentExpr(x.Type)
+		return f.IdentExpr(t.Type, x)
 	case *ast.ArrayType:
-		return f.IdentExpr(x.Elt)
+		return f.IdentExpr(t.Elt, x)
 	case *ast.MapType:
-		return f.IdentExpr(x.Value)
+		return f.IdentExpr(t.Value, x)
 	case *ast.ChanType:
-		return f.IdentExpr(x.Value)
+		return f.IdentExpr(t.Value, x)
 	}
 	return
 }

@@ -51,16 +51,14 @@ type Map struct{ typ, key, elem *Type }
 
 // Struct represents a Go struct type.
 type Struct struct {
-	typ     *Type
-	fields  *data.Data
-	methods *data.Data
+	typ    *Type
+	fields *data.Data
 }
 
 func NewStruct(typ *Type) *Struct {
 	return &Struct{
-		typ:     typ,
-		fields:  data.Make[*Field](data.Cap),
-		methods: data.Make[*Func](data.Cap),
+		typ:    typ,
+		fields: data.Make[*Field](data.Cap),
 	}
 }
 
@@ -91,7 +89,7 @@ func (s *Struct) Funcs() (fields *data.Data) {
 
 // Methods returns the methods of the struct.
 func (s *Struct) Methods() (methods *data.Data) {
-	return s.methods
+	return s.typ.methods
 }
 
 // Field represents a Go struct field.

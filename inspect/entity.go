@@ -76,7 +76,6 @@ type Package struct {
 	Funcs     *data.Data // the declared functions in the package
 	IsImport  bool       // the package is an import
 	Inspected bool       // the package has been inspected
-	dTypes    *data.Data // types contained within a package declaration
 }
 
 func NewPackage(pkgPath string) *Package {
@@ -88,7 +87,6 @@ func NewPackage(pkgPath string) *Package {
 		Values:  data.Make[*Value](data.Cap),
 		Types:   data.Make[*Type](data.Cap),
 		Funcs:   data.Make[*Func](data.Cap),
-		dTypes:  data.Make[*data.Data](data.Cap),
 	}
 }
 
@@ -154,9 +152,9 @@ func (f *File) Package() *Package {
 
 // Import represents an imported package in a file.
 type Import struct {
+	spec *ast.ImportSpec // the import specification
 	file *File           // the file where the import is declared
 	name string          // the import alias or pkg suffix
-	spec *ast.ImportSpec // the import specification
 	pkg  *Package        // the imported package
 }
 
@@ -182,10 +180,10 @@ func (i *Import) File() *File {
 
 // Value represents a declared value (const or var) in a file.
 type Value struct {
+	spec *ast.ValueSpec // the value specification
 	file *File          // the file where the value is declared
 	kind byte           // the value kind (const or var)
 	name string         // the value name
-	spec *ast.ValueSpec // the value specification
 	indx int            // the value index
 	typ  *Type          // the value type
 }
@@ -217,12 +215,17 @@ func (v *Value) Kind() byte {
 
 // Type represents a declared type in a file.
 type Type struct {
-	file   *File         // he file where the type is declared
-	name   string        // the type name
-	spec   *ast.TypeSpec // the type specification
-	imp    *Import       // the type source if imported
-	kind   byte          // the type kind
-	object Object        // the type object, if an object type
+	file    *File         // the file where the type is declared
+	imp     *Import       // the type source if imported
+	spec    *ast.TypeSpec // the type spec if declared
+	name    string        // the type name
+	kind    byte          // the type kind
+	methods *data.Data    // the type methods
+	object  Object        // the type object, if an object type
+}
+
+func NewTypeLit(file *File, expr ast.Expr) *Type {
+	return &Type{file: file}
 }
 
 // data.Elem interface method
@@ -258,8 +261,8 @@ func (t *Type) Object() Object {
 // Func represents a declared function in a file.
 type Func struct {
 	file *File         // the file where the function is declared
-	name string        // the function name
 	spec *ast.FuncDecl // the function declaration
+	name string        // the function name
 	typ  *Type         // the function type
 	of   *Type         // the function receiver type
 	in   *data.Data    // the function input parameter types
