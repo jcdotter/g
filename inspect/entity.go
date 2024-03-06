@@ -107,7 +107,7 @@ func PackageName(name *ast.Ident, path string) (n, p string) {
 
 // data.Elem interface method
 func (p *Package) Key() string {
-	return p.Path
+	return p.Name
 }
 
 func (p *Package) NumEntities() (n int) {
@@ -275,4 +275,34 @@ func (f *Func) Key() string {
 		return f.of.name + "." + f.name
 	}
 	return f.name
+}
+
+// Name returns the function name.
+func (f *Func) Name() string {
+	return f.name
+}
+
+// File returns the file where the function is declared.
+func (f *Func) File() *File {
+	return f.file
+}
+
+// Type returns the function type.
+func (f *Func) Type() *Type {
+	return f.typ
+}
+
+// Of returns the function receiver type, if the function is a method.
+func (f *Func) Of() *Type {
+	return f.of
+}
+
+// In returns the function input parameter types.
+func (f *Func) In() *data.Data {
+	return f.in
+}
+
+// Out returns the function output parameter types.
+func (f *Func) Out() *data.Data {
+	return f.out
 }

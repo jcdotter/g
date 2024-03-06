@@ -27,11 +27,35 @@ type Array struct {
 	len  int
 }
 
+func (a *Array) Type() *Type {
+	return a.typ
+}
+
+func (a *Array) Elem() *Type {
+	return a.elem
+}
+
+func (a *Array) Len() int {
+	return a.len
+}
+
 // Chan represents a Go channel type.
 type Chan struct {
 	typ  *Type
 	elem *Type
 	dir  byte
+}
+
+func (c *Chan) Type() *Type {
+	return c.typ
+}
+
+func (c *Chan) Elem() *Type {
+	return c.elem
+}
+
+func (c *Chan) Dir() byte {
+	return c.dir
 }
 
 // Interface represents a Go interface type.
@@ -40,11 +64,39 @@ type Interface struct {
 	methods *data.Data
 }
 
+func (i *Interface) Type() *Type {
+	return i.typ
+}
+
+func (i *Interface) Methods() *data.Data {
+	return i.methods
+}
+
 // Pointer represents a Go pointer type.
 type Pointer struct{ typ, elem *Type }
 
+func (p *Pointer) Type() *Type {
+	return p.typ
+}
+
+func (p *Pointer) Elem() *Type {
+	return p.elem
+}
+
 // Map represents a Go map type.
 type Map struct{ typ, key, elem *Type }
+
+func (m *Map) Type() *Type {
+	return m.typ
+}
+
+func (m *Map) Key() *Type {
+	return m.key
+}
+
+func (m *Map) Elem() *Type {
+	return m.elem
+}
 
 // --------------------------------------------------------------------
 // STRUCT OBJECT

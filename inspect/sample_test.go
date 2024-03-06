@@ -15,20 +15,66 @@
 package inspect
 
 import (
-	//"strings"
 	_ "testing"
-
-	"github.com/jcdotter/go/data"
 )
 
-/* type (
-	struct1 struct{ Bool bool }
-	struct2 struct{ Int int }
-	fn1     func(string) (int, error)
-	String  string
-) */
+const (
+	Const0 = iota
+	Const1
+	Const2 byte = iota
+	Const3
+)
 
-var N = data.IndexMin
+// basiclit types
+var (
+	IntBasic     = 1
+	FloatBasic   = 1.0
+	ComplexBasic = 1.0i
+	StringBasic  = "string"
+	RuneBasic    = 'r'
+)
+
+// paren types
+var (
+	IntParen     = (1)
+	FloatParen   = (1.0)
+	ComplexParen = (1.0i)
+	StringParen  = ("string")
+	RuneParen    = ('r')
+)
+
+// pointer types
+var (
+	IntPointer     *int
+	FloatPointer   *float64
+	ComplexPointer *complex128
+	StringPointer  *string
+	RunePointer    *rune
+
+	IntRef     = &IntBasic
+	FloatRef   = &FloatBasic
+	ComplexRef = &ComplexBasic
+	StringRef  = &StringBasic
+	RuneRef    = &RuneBasic
+)
+
+// binary types
+var (
+	IntBinary    = 1 << 1
+	FloatBinary  = 1.0 + 1.0
+	StringBinary = "string" + "string"
+)
+
+// call types
+var (
+	IntCall  = FuncLit()
+	ByteCall = byte(IntCall)
+)
+
+// funclit types
+var (
+	FuncLit = func() int { return 1 }
+)
 
 /* type Str string
 

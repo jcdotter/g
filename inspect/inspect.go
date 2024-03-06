@@ -20,7 +20,6 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"reflect"
 	"strconv"
 
 	"github.com/jcdotter/go/data"
@@ -32,6 +31,7 @@ import (
 // the package cannot be parsed.
 func Inspect(PkgPath string) (*Package, error) {
 	p := NewPackage(PkgPath)
+	Packages.Add(p)
 	if err := p.Inspect(); err != nil {
 		return nil, err
 	}
@@ -42,18 +42,18 @@ func Inspect(PkgPath string) (*Package, error) {
 // returns the package object for inspection, or an error if
 // the package cannot be parsed.
 func (p *Package) Inspect() (err error) {
-	fmt.Println("INSPECTING PACKAGE:", p.Name)
+	if p.Inspected {
+		return
+	}
 	if err = p.Parse(); err != nil {
 		return
 	}
 	for _, f := range p.Files.List() {
-		fmt.Println("  CAPTURING FILE:", f.(*File).n)
 		if err = f.(*File).Capture(); err != nil {
 			return
 		}
 	}
 	for _, f := range p.Files.List() {
-		fmt.Println("  INSPECTING FILE:", f.(*File).n)
 		if err = f.(*File).Inspect(); err != nil {
 			return
 		}
@@ -162,10 +162,13 @@ func (f *File) CaptureImports(specs []ast.Spec) (err error) {
 		// the current package
 		if pkg := f.p.Imports.Get(path); pkg != nil {
 			imp.pkg = pkg.(*Package)
+		} else if pkg := Packages.Get(path); pkg != nil {
+			imp.pkg = pkg.(*Package)
 		} else {
 			imp.pkg = NewPackage(path)
 			imp.pkg.IsImport = true
 			f.p.Imports.Add(imp.pkg)
+			Packages.Add(imp.pkg)
 		}
 	}
 	return
@@ -233,9 +236,11 @@ func (f *File) Inspect() (err error) {
 	return nil
 }
 
+var LAST int
+
 func (f *File) InspectValues() (err error) {
-	var priorSpec *ast.ValueSpec
-	var priorType *Type
+	var spec *ast.ValueSpec
+	var specType, priorType *Type
 	for i, vals := 0, f.p.Values.List(); i < len(vals); i++ {
 
 		// assert value and skip if not in file
@@ -251,28 +256,43 @@ func (f *File) InspectValues() (err error) {
 		switch {
 		case v.spec.Type != nil:
 			v.typ = f.TypeExpr(v.spec.Type, nil)
-			priorSpec, priorType = v.spec, v.typ
+			spec, specType, priorType = v.spec, v.typ, v.typ
 			continue
-		case v.spec == priorSpec && priorType != nil:
+		case v.spec == spec && specType != nil:
+			v.typ = specType
+			continue
+		case v.indx >= len(v.spec.Values):
 			v.typ = priorType
 			continue
 		}
 
-		priorType = nil
 		v.typ = f.TypeExpr(v.spec.Values[v.indx], nil)
+		specType = nil
+		priorType = v.typ
+		// TODO: if the type is nil, is is dependent on
+		// other declarations that have not been inspected
+		// yet. Need to inspect the file again after all
+		// declarations have been inspected. TypeIdent
+		// is responsible for returning these values
 
 		// if the type is not declared and the value
 		// is function call, iterate through the output
 		// types and add them to the value types
 		if len(v.spec.Values) == 1 && v.typ != nil && v.typ.kind == FUNC && v.typ.object != nil {
-			l := v.typ.object.(*Func).out.Len() - 1
-			for j, t := range v.typ.object.(*Func).out.List() {
-				v := vals[i+j].(*Value)
-				if v.indx == j {
-					v.typ = t.(*Type)
+			if _, ok := v.spec.Values[0].(*ast.CallExpr); ok {
+				var l int
+				if l = v.typ.object.(*Func).out.Len(); l > 0 {
+					l--
 				}
+
+				for j, t := range v.typ.object.(*Func).out.List() {
+					v := vals[i+j].(*Value)
+					if v.indx == j {
+						v.typ = t.(*Type)
+					}
+				}
+				i += l
 			}
-			i += l
 		}
 	}
 	return
@@ -287,12 +307,20 @@ func (f *File) InspectTypes() (err error) {
 			continue
 		}
 
+		var typ *Type
+
+		if t.spec != nil {
+			typ = f.TypeExpr(t.spec.Type, t.spec.TypeParams)
+		} else if t.name != "" {
+			typ = f.TypeExpr(&ast.Ident{Name: t.name}, nil)
+		}
+
 		// inspect type expression and update
 		// type with kind and object
-		typ := f.TypeExpr(t.spec.Type, t.spec.TypeParams)
-		t.kind = typ.kind
-		t.object = typ.object
-		fmt.Println("INSPECT TYPE:", t.name)
+		if typ != nil {
+			t.kind = typ.kind
+			t.object = typ.object
+		}
 	}
 	return
 }
@@ -320,7 +348,6 @@ func (f *File) InspectFuncs() (err error) {
 		// add the function as a method to the receiver
 		if fn.spec.Recv != nil {
 			if len(fn.spec.Recv.List) == 1 {
-				//fmt.Println("RECEIVER:", fn.spec.Recv.List[0].Names[0].Name, fn.spec.Recv.List[0].Type, fn.name)
 				if i := fn.spec.Recv.List[0].Names; len(i) == 1 {
 					if rtyp := f.TypeExpr(fn.spec.Recv.List[0].Type, nil); rtyp != nil {
 						fn.of = rtyp
@@ -340,18 +367,13 @@ func (f *File) InspectFuncs() (err error) {
 // Type Evaluation Methods
 
 func (f *File) TypeExpr(e ast.Expr, p *ast.FieldList) *Type {
-	// TODO: evaluate need for the following expressions:
-	// *ast.IndexExpr:
-	// *ast.SliceExpr:
-	fmt.Println("EXPR:", reflect.TypeOf(e))
 	switch t := e.(type) {
+	case *ast.Ident:
+		return f.TypeIdent(t, p)
 	case *ast.BasicLit:
-		// literal expression of int, float, rune, string
 		return TypeToken(t.Kind)
 	case *ast.ParenExpr:
 		return f.TypeExpr(t.X, p)
-	case *ast.Ident:
-		return f.TypeIdent(t, p)
 	case *ast.StarExpr:
 		return f.TypePointer(t, p)
 	case *ast.UnaryExpr:
@@ -378,10 +400,13 @@ func (f *File) TypeExpr(e ast.Expr, p *ast.FieldList) *Type {
 		return f.TypeChan(t, p)
 	case *ast.SelectorExpr:
 		return f.TypeSelector(t, p)
+	case *ast.IndexExpr:
+		return f.TypeIndex(t, p)
 	case *ast.TypeAssertExpr:
 		return f.TypeExpr(t.Type, p)
+	case *ast.Ellipsis:
+		return f.TypeElips(t, p)
 	}
-	fmt.Println("UNKNOWN EXPR:", reflect.TypeOf(e))
 	return nil
 }
 
@@ -392,14 +417,12 @@ func (f *File) TypeIdent(i *ast.Ident, x *ast.FieldList) (typ *Type) {
 
 	// check decl spec type if it exists
 	if x != nil {
-		fmt.Println("PARAMS:", len(x.List))
 		for _, field := range x.List {
 			if len(field.Names) == 0 {
 				return f.TypeExpr(field.Type, x)
 			}
 			for _, n := range field.Names {
 				if n.Name == i.Name {
-					fmt.Println("PARAM:", f.TypeExpr(field.Type, x))
 					return f.TypeExpr(field.Type, x)
 				}
 			}
@@ -419,6 +442,7 @@ func (f *File) TypeIdent(i *ast.Ident, x *ast.FieldList) (typ *Type) {
 
 	// check declared values, types, funcs
 	if v := f.p.Values.Get(i.Name); v != nil {
+		fmt.Println("FOUND:", i.Name)
 		return v.(*Value).typ
 	}
 	if t := f.p.Types.Get(i.Name); t != nil {
@@ -441,53 +465,14 @@ func (f *File) TypeIdent(i *ast.Ident, x *ast.FieldList) (typ *Type) {
 		// for deeper dependencies, inspect the package when a
 		// declaration from the package is encountered. See
 		// TypeSelector and TypeIndex for more reference.
-		//if !f.p.IsImport {
 		if p := imp.(*Import).pkg; p.Inspected || p.Inspect() == nil {
 			typ.object = p
 		}
-		//}
 		return
 	}
-	fmt.Println("IDENT NOT FOUND:", f.p.Name+"."+i.Name, "  OBJ:", i.Obj)
-	fmt.Println("  PKG DECLS:", len(f.t.Decls), "CAPTURED:", f.p.Imports.Len()+f.p.Values.Len()+f.p.Types.Len()+f.p.Funcs.Len())
-	for _, x := range f.p.Values.List() {
-		v := x.(*Value)
-		fmt.Println("  VALUE:", v.kind, v.name, v.typ)
-	}
-	for _, x := range f.p.Types.List() {
-		t := x.(*Type)
-		fmt.Println("  TYPE:", t.name, t.kind, t.object)
-	}
-	for _, x := range f.p.Funcs.List() {
-		fn := x.(*Func)
-		fmt.Println("  FUNC:", fn.name, fn.typ)
-	}
-	// if ident is not in types and has an object,
-	// inspect the object and return the type
-	/* if i.Obj != nil {
-		switch i.Obj.Kind {
-		case ast.Var:
-			if err := f.InspectValue(VAR, i.Obj.Decl.(*ast.ValueSpec)); err == nil {
-				return f.p.Values.Get(i.Name).(*Value).typ
-			}
-		case ast.Con:
-			if err := f.InspectValue(CONST, i.Obj.Decl.(*ast.ValueSpec)); err == nil {
-				return f.p.Values.Get(i.Name).(*Value).typ
-			}
-		case ast.Typ:
-			if err := f.InspectType(i.Obj.Decl.(*ast.TypeSpec)); err == nil {
-				return f.p.Types.Get(i.Name).(*Type)
-			}
-		case ast.Fun:
-			if err := f.InspectFunc(i.Obj.Decl.(*ast.FuncDecl)); err == nil {
-				return f.p.Funcs.Get(i.Name).(*Func).typ
-			}
-		}
-	} */
 	return
 }
 
-// TODO: rework if receiver changed to *Type from *File
 // typePointer returns the pointer type of the type provided.
 func (f *File) typePointer(t *Type) (typ *Type) {
 	if t != nil {
@@ -544,7 +529,11 @@ func (f *File) TypeBinary(b *ast.BinaryExpr, x *ast.FieldList) (typ *Type) {
 func (f *File) TypeFuncLit(fn *ast.FuncLit, x *ast.FieldList) (typ *Type) {
 	// TODO: implement function literal as a function in the package.
 	// currently only stored as a value in the package.
-	fnc := &Func{file: f}
+	fnc := &Func{
+		file: f,
+		in:   data.Make[*Type](4),
+		out:  data.Make[*Type](4),
+	}
 	typ = &Type{
 		file:   f,
 		kind:   FUNC,
@@ -554,17 +543,8 @@ func (f *File) TypeFuncLit(fn *ast.FuncLit, x *ast.FieldList) (typ *Type) {
 	params := JoinFields(x, fn.Type.TypeParams)
 	f.TypeParams(fn.Type.Params, fnc.in, params)
 	f.TypeParams(fn.Type.Results, fnc.out, params)
-	return
-}
 
-func JoinFields(a, b *ast.FieldList) *ast.FieldList {
-	if a == nil {
-		return b
-	}
-	if b == nil {
-		return a
-	}
-	return &ast.FieldList{List: append(a.List, b.List...)}
+	return
 }
 
 // TypeFunc returns the type of the function expression provided.
@@ -583,12 +563,6 @@ func (f *File) TypeFunc(fn *ast.FuncType, x *ast.FieldList) (typ *Type) {
 	}
 	fnc.typ = typ
 	params := JoinFields(x, fn.TypeParams)
-
-	if fn.TypeParams != nil {
-		for _, t := range fn.TypeParams.List {
-			fmt.Println("TYPEPARAM:", t.Names[0].Name, t.Type)
-		}
-	}
 
 	// build and add func inputs and outputs
 	f.TypeParams(fn.Params, fnc.in, params)
@@ -637,6 +611,18 @@ func (f *File) TypeArray(a *ast.ArrayType, x *ast.FieldList) (typ *Type) {
 		arr.len, _ = strconv.Atoi(l)
 		typ.name = "[" + l + "]" + arr.elem.name
 	}
+	return
+}
+
+// TypeEllipsis returns the type of the ellipsis expression provided.
+func (f *File) TypeElips(e *ast.Ellipsis, x *ast.FieldList) (typ *Type) {
+	typ = &Type{
+		file:   f,
+		kind:   ELIPS,
+		object: &Array{elem: f.TypeExpr(e.Elt, x)},
+	}
+	typ.object.(*Array).typ = typ
+	typ.name = "..." + typ.object.(*Array).elem.name
 	return
 }
 
@@ -756,38 +742,30 @@ func (f *File) TypeChan(c *ast.ChanType, x *ast.FieldList) (typ *Type) {
 // Typically used for call to an external package function, value or
 // type or call to internal package method or struct field
 func (f *File) TypeSelector(s *ast.SelectorExpr, x *ast.FieldList) (typ *Type) {
-	// TODO: know if a func call or a func assigned to a variable
-	// TODO: could have in indexExpr rather than selectorExpr
-
-	// Type{file: current file, kind: package, object: imported package}
-	//   |-- Type{file: import file, kind: struct}
-	//   |-- Type{file: import file, kind: struct}
-	//   |     |-- Field{of: Type, typ: Type}
-	//   |     |-- Field{of: Type, typ: Type}
-
 	idents := append(f.IdentExpr(s.X, x), s.Sel)
 	if typ = f.TypeIdent(idents[0], x); typ != nil {
 		for i := 1; i < len(idents); i++ {
 			typ = f.TypeIdentKey(typ, idents[i].Name, x)
 		}
 	}
-	f.PrintSelector(idents) // TODO: remove
 	return
 }
 
-// TODO: remove
-func (f *File) PrintSelector(i []*ast.Ident) {
-	var n string
-	for j, x := range i {
-		if j > 0 {
-			n += ":"
-		}
-		n += x.Name
-		if x.Obj != nil && x.Obj.Decl != nil {
-			n += "(" + reflect.TypeOf(x.Obj.Decl).String() + ")"
+// TypeIndex returns the type of the index expression provided.
+// Typically used for indexing an array, slice, map or string.
+func (f *File) TypeIndex(i *ast.IndexExpr, x *ast.FieldList) (typ *Type) {
+	ptyp := f.TypeExpr(i.X, x)
+	if ptyp != nil && ptyp.object != nil {
+		switch ptyp.kind {
+		case ARRAY, SLICE, ELIPS:
+			typ = ptyp.object.(*Array).elem
+		case MAP:
+			typ = ptyp.object.(*Map).elem
+		case STRING:
+			typ = BuiltinTypes.List()[RUNE].(*Type)
 		}
 	}
-	fmt.Println("SELC EXPR:", n)
+	return
 }
 
 func (f *File) TypeIdentKey(t *Type, key string, x *ast.FieldList) (typ *Type) {
@@ -808,7 +786,6 @@ func (f *File) TypeIdentKey(t *Type, key string, x *ast.FieldList) (typ *Type) {
 				return t.elem
 			}
 		}
-		fmt.Println("TYPE:", t.name, "MISSING OBJECT")
 		if t.kind == PACKAGE {
 			return &Type{
 				imp:  t.imp,

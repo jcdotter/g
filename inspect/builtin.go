@@ -15,6 +15,7 @@
 package inspect
 
 import (
+	"go/ast"
 	"go/token"
 	"os"
 
@@ -22,8 +23,14 @@ import (
 )
 
 var (
+	// PkgPath is the path to the directory for installed packages
 	PkgPath = os.Getenv("HOME") + "/GO/pkg/mod/"
+
+	// SrcPath is the path to the directory for the go standard library
 	SrcPath = "/usr/local/go/src/"
+
+	// Packages is a cache of all packages inspected during runtime
+	Packages = data.Make[*Package](8)
 )
 
 // -----------------------------------------------------------------------------
@@ -233,4 +240,14 @@ func TypeToken(t token.Token) *Type {
 		return BuiltinTypes.Get("rune").(*Type)
 	}
 	return nil
+}
+
+func JoinFields(a, b *ast.FieldList) *ast.FieldList {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	return &ast.FieldList{List: append(a.List, b.List...)}
 }
