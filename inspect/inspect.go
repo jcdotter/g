@@ -15,7 +15,6 @@
 package inspect
 
 import (
-	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -201,9 +200,10 @@ func (f *File) CaptureTypes(specs []ast.Spec) (err error) {
 		t := s.(*ast.TypeSpec)
 		f.p.Types.Add(
 			&Type{
-				file: f,
-				name: t.Name.Name,
-				spec: t,
+				file:    f,
+				name:    t.Name.Name,
+				spec:    t,
+				methods: data.Make[*Func](4),
 			},
 		)
 	}
@@ -223,6 +223,10 @@ func (f *File) CaptureFunc(fn *ast.FuncDecl) (err error) {
 	return
 }
 
+// Inspect inspects the declared entities in the file and
+// updates the types and objects of the entities. Order of
+// inspection is types, funcs, and values. Returns an error
+// if the entities cannot be inspected.
 func (f *File) Inspect() (err error) {
 	if err = f.InspectTypes(); err != nil {
 		return err
@@ -237,9 +241,11 @@ func (f *File) Inspect() (err error) {
 }
 
 func (f *File) InspectValues() (err error) {
+	var maxDepth = 4
 	var spec *ast.ValueSpec
 	var specType, priorType *Type
-	var dependents = make([]*Value, 4)
+	var dependents bool
+loop:
 	for i, vals := 0, f.p.Values.List(); i < len(vals); i++ {
 
 		// assert value and skip if not in file
@@ -265,19 +271,18 @@ func (f *File) InspectValues() (err error) {
 			continue
 		}
 
+		// if the value expression yields a nil type,
+		// the value is dependent on another value.
+		// after independent values are inspected,
+		// the dependent values are re-inspected.
 		var typ *Type
 		if typ = f.TypeExpr(v.spec.Values[v.indx], nil); typ == nil {
-			dependents = append(dependents, v)
+			dependents = true
 			continue
 		}
 		specType = nil
 		priorType = typ
 		v.typ = typ
-		// TODO: if the type is nil, is is dependent on
-		// other declarations that have not been inspected
-		// yet. Need to inspect the file again after all
-		// declarations have been inspected. TypeIdent
-		// is responsible for returning these values
 
 		// if the type is not declared and the value
 		// is function call, iterate through the output
@@ -300,11 +305,11 @@ func (f *File) InspectValues() (err error) {
 		}
 	}
 
-	for _, v := range dependents {
-		if v != nil { // why are there nils
-			fmt.Println("DEPENDENT", v.name)
-			v.typ = f.TypeExpr(v.spec.Values[v.indx], nil)
-		}
+	// re-inspect dependent values if there are any
+	// up to a maximum depth of 4 to prevent infinite loops
+	if dependents && maxDepth > 0 {
+		maxDepth--
+		goto loop
 	}
 
 	return
@@ -362,11 +367,11 @@ func (f *File) InspectFuncs() (err error) {
 			if len(fn.spec.Recv.List) == 1 {
 				if i := fn.spec.Recv.List[0].Names; len(i) == 1 {
 					if rtyp := f.TypeExpr(fn.spec.Recv.List[0].Type, nil); rtyp != nil {
-						fn.of = rtyp
+						fnc.of = rtyp
 						if rtyp.kind == POINTER {
 							rtyp = rtyp.object.(*Pointer).elem
 						}
-						rtyp.methods.Add(fn)
+						rtyp.methods.Add(fnc)
 					}
 				}
 			}
@@ -396,10 +401,10 @@ func (f *File) TypeExpr(e ast.Expr, p *ast.FieldList) *Type {
 		return f.TypeExpr(t.Fun, p)
 	case *ast.FuncLit:
 		return f.TypeFuncLit(t, p)
-	case *ast.FuncType:
-		return f.TypeFunc(t, p)
 	case *ast.CompositeLit:
 		return f.TypeExpr(t.Type, p)
+	case *ast.FuncType:
+		return f.TypeFunc(t, p)
 	case *ast.ArrayType:
 		return f.TypeArray(t, p)
 	case *ast.MapType:
@@ -538,24 +543,7 @@ func (f *File) TypeBinary(b *ast.BinaryExpr, x *ast.FieldList) (typ *Type) {
 // TypeFunc returns the type of the function literal provided.
 // Typically used for assigning a function literal to a variable.
 func (f *File) TypeFuncLit(fn *ast.FuncLit, x *ast.FieldList) (typ *Type) {
-	// TODO: implement function literal as a function in the package.
-	// currently only stored as a value in the package.
-	fnc := &Func{
-		file: f,
-		in:   data.Make[*Type](4),
-		out:  data.Make[*Type](4),
-	}
-	typ = &Type{
-		file:   f,
-		kind:   FUNC,
-		object: fnc,
-	}
-	fnc.typ = typ
-	params := JoinFields(x, fn.Type.TypeParams)
-	f.TypeParams(fn.Type.Params, fnc.in, params)
-	f.TypeParams(fn.Type.Results, fnc.out, params)
-
-	return
+	return f.TypeFunc(fn.Type, x)
 }
 
 // TypeFunc returns the type of the function expression provided.

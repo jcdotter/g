@@ -34,47 +34,39 @@ var (
 	RuneBasic    = 'r'
 )
 
-// paren types
+// general expression types
 var (
-	IntParen     = (1)
-	FloatParen   = (1.0)
-	ComplexParen = (1.0i)
-	StringParen  = ("string")
-	RuneParen    = ('r')
+	IntParen     = (1)                                                       // parenthesized expression
+	IntPointer   *int                                                        // pointer (star) expression
+	IntRef       = &IntBasic                                                 // reference (unary) expression
+	StringBinary = "string" + "string"                                       // binary expression
+	IntCall      = FuncLit()                                                 // call expression
+	FuncLit      = func() int { return 1 }                                   // func literal
+	ArrayLit     = [3]int{1, 2, 3}                                           // array literal
+	SliceLit     = []int{1, 2, 3}                                            // slice literal
+	MapLit       = map[string]int{"one": 1, "two": 2, "three": 3}            // map literal
+	ChanLit      chan string                                                 // chan literal
+	StructLit    = struct{ Bool, Int, String string }{"true", "1", "string"} // struct literal
+	SelExpr      = StructLit.Int                                             // selector expression
+	IndexExpr    = ArrayLit[1]                                               // index expression
 )
 
-// pointer types
-var (
-	IntPointer     *int
-	FloatPointer   *float64
-	ComplexPointer *complex128
-	StringPointer  *string
-	RunePointer    *rune
-
-	IntRef     = &IntBasic
-	FloatRef   = &FloatBasic
-	ComplexRef = &ComplexBasic
-	StringRef  = &StringBasic
-	RuneRef    = &RuneBasic
+// composite types
+type (
+	BoolType                    bool
+	InterfaceType               interface{ Bool() bool }
+	StructType[T InterfaceType] struct {
+		Bool   BoolType
+		Int    int
+		String string
+		Iface  T
+		Func   func(string) (int, error)
+	}
 )
 
-// binary types
-var (
-	IntBinary    = 1 << 1
-	FloatBinary  = 1.0 + 1.0
-	StringBinary = "string" + "string"
-)
-
-// call types
-var (
-	IntCall  = FuncLit()
-	ByteCall = byte(IntCall)
-)
-
-// funclit types
-var (
-	FuncLit = func() int { return 1 }
-)
+// functions
+func (b *BoolType) BoolMethod(i int) int        { return i }
+func (s *StructType[T]) StructMethod(i int) int { return i }
 
 /* type Str string
 

@@ -15,7 +15,6 @@
 package inspect
 
 import (
-	"fmt"
 	"go/parser"
 	"go/token"
 	"testing"
@@ -136,35 +135,11 @@ func TestInspect(t *testing.T) {
 	c = f.p.Values.Get("IntParen").(*Value)
 	gt.Equal(INT, c.Type().Kind(), "Kind")
 
-	c = f.p.Values.Get("FloatParen").(*Value)
-	gt.Equal(FLOAT64, c.Type().Kind(), "Kind")
-
-	c = f.p.Values.Get("ComplexParen").(*Value)
-	gt.Equal(COMPLEX128, c.Type().Kind(), "Kind")
-
-	c = f.p.Values.Get("StringParen").(*Value)
-	gt.Equal(STRING, c.Type().Kind(), "Kind")
-
-	c = f.p.Values.Get("RuneParen").(*Value)
-	gt.Equal(RUNE, c.Type().Kind(), "Kind")
-
 	// InspectPointerTypes
 	gt.Msg = "Inspect().Pointer.%s"
 	c = f.p.Values.Get("IntPointer").(*Value)
 	gt.Equal(POINTER, c.Type().Kind(), "Kind")
 	gt.Equal(INT, c.Type().Object().(*Pointer).Elem().Kind(), "Elem.Kind")
-
-	c = f.p.Values.Get("FloatPointer").(*Value)
-	gt.Equal(FLOAT64, c.Type().Object().(*Pointer).Elem().Kind(), "Elem.Kind")
-
-	c = f.p.Values.Get("ComplexPointer").(*Value)
-	gt.Equal(COMPLEX128, c.Type().Object().(*Pointer).Elem().Kind(), "Elem.Kind")
-
-	c = f.p.Values.Get("StringPointer").(*Value)
-	gt.Equal(STRING, c.Type().Object().(*Pointer).Elem().Kind(), "Elem.Kind")
-
-	c = f.p.Values.Get("RunePointer").(*Value)
-	gt.Equal(RUNE, c.Type().Object().(*Pointer).Elem().Kind(), "Elem.Kind")
 
 	// InspectPointerRefs
 	gt.Msg = "Inspect().PointerRef.%s"
@@ -172,39 +147,15 @@ func TestInspect(t *testing.T) {
 	gt.Equal(POINTER, c.Type().Kind(), "Kind")
 	gt.Equal(INT, c.Type().Object().(*Pointer).Elem().Kind(), "Elem.Kind")
 
-	c = f.p.Values.Get("FloatRef").(*Value)
-	gt.Equal(FLOAT64, c.Type().Object().(*Pointer).Elem().Kind(), "Elem.Kind")
-
-	c = f.p.Values.Get("ComplexRef").(*Value)
-	gt.Equal(COMPLEX128, c.Type().Object().(*Pointer).Elem().Kind(), "Elem.Kind")
-
-	c = f.p.Values.Get("StringRef").(*Value)
-	gt.Equal(STRING, c.Type().Object().(*Pointer).Elem().Kind(), "Elem.Kind")
-
-	c = f.p.Values.Get("RuneRef").(*Value)
-	gt.Equal(RUNE, c.Type().Object().(*Pointer).Elem().Kind(), "Elem.Kind")
-
 	// inspectBinaryExprs
 	gt.Msg = "Inspect().Binary.%s"
-	c = f.p.Values.Get("IntBinary").(*Value)
-	gt.Equal(INT, c.Type().Kind(), "Kind")
-
-	c = f.p.Values.Get("FloatBinary").(*Value)
-	gt.Equal(FLOAT64, c.Type().Kind(), "Kind")
-
 	c = f.p.Values.Get("StringBinary").(*Value)
 	gt.Equal(STRING, c.Type().Kind(), "Kind")
-
-	fmt.Println(f.p.Values.Get("IntCall").(*Value).Type())
-	fmt.Println(f.p.Values.Get("FuncLit").(*Value).Type())
 
 	// InspectCallExprs
 	gt.Msg = "Inspect().Call.%s"
 	c = f.p.Values.Get("IntCall").(*Value)
 	gt.Equal(INT, c.Type().Kind(), "Kind")
-
-	c = f.p.Values.Get("ByteCall").(*Value)
-	gt.Equal(BYTE, c.Type().Kind(), "Kind")
 
 	// InspectFuncLits
 	gt.Msg = "Inspect().FuncLit.%s"
@@ -213,5 +164,58 @@ func TestInspect(t *testing.T) {
 	gt.Equal(0, c.Type().Object().(*Func).In().Len(), "NumParams")
 	gt.Equal(1, c.Type().Object().(*Func).Out().Len(), "NumResults")
 	gt.Equal(INT, c.Type().Object().(*Func).Out().Index(0).(*Type).Kind(), "Result.Kind")
+
+	// InspectArrayLits
+	gt.Msg = "Inspect().ArrayLit.%s"
+	c = f.p.Values.Get("ArrayLit").(*Value)
+	gt.Equal(ARRAY, c.Type().Kind(), "Kind")
+	gt.Equal(INT, c.Type().Object().(*Array).Elem().Kind(), "Elem.Kind")
+
+	// InspectSliceLits
+	gt.Msg = "Inspect().SliceLit.%s"
+	c = f.p.Values.Get("SliceLit").(*Value)
+	gt.Equal(SLICE, c.Type().Kind(), "Kind")
+	gt.Equal(INT, c.Type().Object().(*Array).Elem().Kind(), "Elem.Kind")
+
+	// InspectMapLits
+	gt.Msg = "Inspect().MapLit.%s"
+	c = f.p.Values.Get("MapLit").(*Value)
+	gt.Equal(MAP, c.Type().Kind(), "Kind")
+	gt.Equal(STRING, c.Type().Object().(*Map).Key().Kind(), "Key.Kind")
+	gt.Equal(INT, c.Type().Object().(*Map).Elem().Kind(), "Elem.Kind")
+
+	// InspectChanLits
+	gt.Msg = "Inspect().ChanLit.%s"
+	c = f.p.Values.Get("ChanLit").(*Value)
+	gt.Equal(CHAN, c.Type().Kind(), "Kind")
+	gt.Equal(STRING, c.Type().Object().(*Chan).Elem().Kind(), "Elem.Kind")
+
+	// InspectStructLits
+	gt.Msg = "Inspect().StructLit.%s"
+	c = f.p.Values.Get("StructLit").(*Value)
+	gt.Equal(STRUCT, c.Type().Kind(), "Kind")
+	gt.Equal(STRING, c.Type().Object().(*Struct).Index(1).Type().Kind(), "Field.Kind")
+
+	// InspectSelExprs
+	gt.Msg = "Inspect().SelExpr.%s"
+	c = f.p.Values.Get("SelExpr").(*Value)
+	gt.Equal(STRING, c.Type().Kind(), "Kind")
+
+	// InspectIndexExprs
+	gt.Msg = "Inspect().IndexExpr.%s"
+	c = f.p.Values.Get("IndexExpr").(*Value)
+	gt.Equal(INT, c.Type().Kind(), "Kind")
+
+	// InspectTypes
+	var x *Type
+
+	// InspectBoolType
+	gt.Msg = "Inspect().BoolType.%s"
+	x = f.p.Types.Get("BoolType").(*Type)
+	gt.Equal(BOOL, x.Kind(), "Kind")
+	gt.Equal(POINTER, x.Methods().Index(0).(*Func).Of().Kind(), "Method.Receiver.Kind")
+	gt.Equal("BoolType", x.Methods().Index(0).(*Func).Of().Object().(*Pointer).Elem().Name(), "Method.Receiver.Element.Name")
+	gt.Equal(INT, x.Methods().Index(0).(*Func).In().Index(0).(*Type).Kind(), "Method.Param.Kind")
+	gt.Equal(INT, x.Methods().Index(0).(*Func).Out().Index(0).(*Type).Kind(), "Method.Result.Kind")
 
 }

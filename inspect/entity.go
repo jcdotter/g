@@ -258,6 +258,11 @@ func (t *Type) Object() Object {
 	return t.object
 }
 
+// Methods returns the type methods.
+func (t *Type) Methods() *data.Data {
+	return t.methods
+}
+
 // Func represents a declared function in a file.
 type Func struct {
 	file *File         // the file where the function is declared

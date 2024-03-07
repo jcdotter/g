@@ -127,6 +127,16 @@ func (s *Struct) Fields() (fields *data.Data) {
 	return
 }
 
+// Field returns the field with the given name.
+func (s *Struct) Field(name string) (field *Field) {
+	return s.fields.Get(name).(*Field)
+}
+
+// Index returns the field at the given index.
+func (s *Struct) Index(i int) (field *Field) {
+	return s.fields.Index(i).(*Field)
+}
+
 // Funcs returns the fields of the struct with a func type.
 func (s *Struct) Funcs() (fields *data.Data) {
 	fields = data.Make[*Field](s.fields.Len())
@@ -155,4 +165,24 @@ type Field struct {
 
 func (f *Field) Key() string {
 	return f.name
+}
+
+func (f *Field) Type() *Type {
+	return f.typ
+}
+
+func (f *Field) Of() *Type {
+	return f.of
+}
+
+func (f *Field) Name() string {
+	return f.name
+}
+
+func (f *Field) Tag() string {
+	return f.tag
+}
+
+func (f *Field) Offset() int {
+	return f.offset
 }
