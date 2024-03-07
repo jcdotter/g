@@ -224,28 +224,27 @@ func (f *File) CaptureFunc(fn *ast.FuncDecl) (err error) {
 }
 
 func (f *File) Inspect() (err error) {
-	if err = f.InspectValues(); err != nil {
-		return err
-	}
 	if err = f.InspectTypes(); err != nil {
 		return err
 	}
 	if err = f.InspectFuncs(); err != nil {
 		return err
 	}
+	if err = f.InspectValues(); err != nil {
+		return err
+	}
 	return nil
 }
-
-var LAST int
 
 func (f *File) InspectValues() (err error) {
 	var spec *ast.ValueSpec
 	var specType, priorType *Type
+	var dependents = make([]*Value, 4)
 	for i, vals := 0, f.p.Values.List(); i < len(vals); i++ {
 
 		// assert value and skip if not in file
 		v := vals[i].(*Value)
-		if v.file != f {
+		if v.file != f || v.typ != nil {
 			continue
 		}
 
@@ -266,9 +265,14 @@ func (f *File) InspectValues() (err error) {
 			continue
 		}
 
-		v.typ = f.TypeExpr(v.spec.Values[v.indx], nil)
+		var typ *Type
+		if typ = f.TypeExpr(v.spec.Values[v.indx], nil); typ == nil {
+			dependents = append(dependents, v)
+			continue
+		}
 		specType = nil
-		priorType = v.typ
+		priorType = typ
+		v.typ = typ
 		// TODO: if the type is nil, is is dependent on
 		// other declarations that have not been inspected
 		// yet. Need to inspect the file again after all
@@ -295,6 +299,14 @@ func (f *File) InspectValues() (err error) {
 			}
 		}
 	}
+
+	for _, v := range dependents {
+		if v != nil { // why are there nils
+			fmt.Println("DEPENDENT", v.name)
+			v.typ = f.TypeExpr(v.spec.Values[v.indx], nil)
+		}
+	}
+
 	return
 }
 
@@ -442,7 +454,6 @@ func (f *File) TypeIdent(i *ast.Ident, x *ast.FieldList) (typ *Type) {
 
 	// check declared values, types, funcs
 	if v := f.p.Values.Get(i.Name); v != nil {
-		fmt.Println("FOUND:", i.Name)
 		return v.(*Value).typ
 	}
 	if t := f.p.Types.Get(i.Name); t != nil {
