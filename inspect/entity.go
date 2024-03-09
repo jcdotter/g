@@ -263,6 +263,16 @@ func (t *Type) Methods() *data.Data {
 	return t.methods
 }
 
+func (t *Type) Clear() {
+	t.file = nil
+	t.imp = nil
+	t.spec = nil
+	t.name = ""
+	t.kind = 0
+	t.methods = nil
+	t.object = nil
+}
+
 // Func represents a declared function in a file.
 type Func struct {
 	file *File         // the file where the function is declared
@@ -310,4 +320,14 @@ func (f *Func) In() *data.Data {
 // Out returns the function output parameter types.
 func (f *Func) Out() *data.Data {
 	return f.out
+}
+
+func (f *Func) Clear() {
+	f.file = nil
+	f.spec = nil
+	f.name = ""
+	f.typ = nil
+	f.of = nil
+	f.in = nil
+	f.out = nil
 }

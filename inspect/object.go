@@ -117,14 +117,7 @@ func NewStruct(typ *Type) *Struct {
 // Fields returns the fields of the struct,
 // excluding fields with a func type.
 func (s *Struct) Fields() (fields *data.Data) {
-	fields = data.Make[*Field](s.fields.Len())
-	for _, f := range s.fields.List() {
-		field := f.(*Field)
-		if field.typ.Kind() != FUNC {
-			fields.Add(field)
-		}
-	}
-	return
+	return s.fields
 }
 
 // Field returns the field with the given name.

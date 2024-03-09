@@ -200,10 +200,9 @@ func (f *File) CaptureTypes(specs []ast.Spec) (err error) {
 		t := s.(*ast.TypeSpec)
 		f.p.Types.Add(
 			&Type{
-				file:    f,
-				name:    t.Name.Name,
-				spec:    t,
-				methods: data.Make[*Func](4),
+				file: f,
+				name: t.Name.Name,
+				spec: t,
 			},
 		)
 	}
@@ -335,8 +334,10 @@ func (f *File) InspectTypes() (err error) {
 		// inspect type expression and update
 		// type with kind and object
 		if typ != nil {
-			t.kind = typ.kind
-			t.object = typ.object
+			typ.name = t.name
+			typ.spec = t.spec
+			f.p.Types.Set(t.name, typ)
+			t.Clear()
 		}
 	}
 	return
@@ -354,24 +355,29 @@ func (f *File) InspectFuncs() (err error) {
 		// create new type using function spec type
 		// and replace the package function with the
 		// new function type
-		typ := f.TypeFunc(fn.spec.Type, nil)
-		fnc := typ.object.(*Func)
-		fnc.name = fn.name
-		fnc.spec = fn.spec
-		f.p.Funcs.Set(fn.name, fnc)
+		if typ := f.TypeFunc(fn.spec.Type, nil); typ != nil {
+			fnc := typ.object.(*Func)
+			fnc.spec = fn.spec
+			fnc.name = fn.name
+			f.p.Funcs.Set(fn.name, fnc)
+			fn.Clear()
 
-		// if received has one identifier, inspect
-		// the receiver, add it to the function, and
-		// add the function as a method to the receiver
-		if fn.spec.Recv != nil {
-			if len(fn.spec.Recv.List) == 1 {
-				if i := fn.spec.Recv.List[0].Names; len(i) == 1 {
-					if rtyp := f.TypeExpr(fn.spec.Recv.List[0].Type, nil); rtyp != nil {
-						fnc.of = rtyp
-						if rtyp.kind == POINTER {
-							rtyp = rtyp.object.(*Pointer).elem
+			// if received has one identifier, inspect
+			// the receiver, add it to the function, and
+			// add the function as a method to the receiver
+			if fnc.spec.Recv != nil {
+				if len(fnc.spec.Recv.List) == 1 {
+					if i := fnc.spec.Recv.List[0].Names; len(i) == 1 {
+						if rtyp := f.TypeExpr(fnc.spec.Recv.List[0].Type, nil); rtyp != nil {
+							fnc.of = rtyp
+							if rtyp.kind == POINTER {
+								rtyp = rtyp.object.(*Pointer).elem
+							}
+							if rtyp.methods == nil {
+								rtyp.methods = data.Make[*Func](4)
+							}
+							rtyp.methods.Add(fnc)
 						}
-						rtyp.methods.Add(fnc)
 					}
 				}
 			}
@@ -688,13 +694,13 @@ func (f *File) TypeIterface(i *ast.InterfaceType, x *ast.FieldList) (typ *Type) 
 	}
 
 	// set up interface type and add methods
-	intr := &Interface{methods: data.Make[*Func](i.Methods.NumFields())}
+	iface := &Interface{methods: data.Make[*Func](i.Methods.NumFields())}
 	typ = &Type{
 		file:   f,
 		kind:   INTERFACE,
-		object: intr,
+		object: iface,
 	}
-	intr.typ = typ
+	iface.typ = typ
 	for _, field := range i.Methods.List {
 
 		// skip if the interface method has no name
@@ -706,7 +712,7 @@ func (f *File) TypeIterface(i *ast.InterfaceType, x *ast.FieldList) (typ *Type) 
 		if t := f.TypeExpr(field.Type, x); t != nil && t.kind == FUNC {
 			if ftyp := f.TypeFunc(field.Type.(*ast.FuncType), x); ftyp != nil {
 				ftyp.object.(*Func).name = field.Names[0].Name
-				intr.methods.Add(ftyp.object.(*Func))
+				iface.methods.Add(ftyp.object.(*Func))
 			}
 		}
 	}
@@ -762,6 +768,8 @@ func (f *File) TypeIndex(i *ast.IndexExpr, x *ast.FieldList) (typ *Type) {
 			typ = ptyp.object.(*Map).elem
 		case STRING:
 			typ = BuiltinTypes.List()[RUNE].(*Type)
+		case STRUCT, FUNC:
+			typ = ptyp
 		}
 	}
 	return

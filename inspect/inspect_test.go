@@ -78,9 +78,9 @@ func TestNewPackage(t *testing.T) {
 func TestInspect(t *testing.T) {
 	gt := test.New(t, config)
 	f := InspectFile("sample_test.go")
-	/* var e data.Elem
 
 	// InspectImports
+	/* var e data.Elem
 	gt.Msg = "Inspect().Imports.%s"
 	gt.Equal(1, f.i.Len(), "Len")
 	e = f.i.Get("_")
@@ -217,5 +217,27 @@ func TestInspect(t *testing.T) {
 	gt.Equal("BoolType", x.Methods().Index(0).(*Func).Of().Object().(*Pointer).Elem().Name(), "Method.Receiver.Element.Name")
 	gt.Equal(INT, x.Methods().Index(0).(*Func).In().Index(0).(*Type).Kind(), "Method.Param.Kind")
 	gt.Equal(INT, x.Methods().Index(0).(*Func).Out().Index(0).(*Type).Kind(), "Method.Result.Kind")
+
+	// InspectInterfaceType
+	gt.Msg = "Inspect().InterfaceType.%s"
+	x = f.p.Types.Get("InterfaceType").(*Type)
+	gt.Equal(INTERFACE, x.Kind(), "Kind")
+	gt.Equal(1, x.Object().(*Interface).Methods().Len(), "Methods.Len")
+	gt.Equal("Bool", x.Object().(*Interface).Methods().Index(0).(*Func).Name(), "Methods.Name")
+	gt.Equal(BOOL, x.Object().(*Interface).Methods().Index(0).(*Func).Out().Index(0).(*Type).Kind(), "Method.Result.Kind")
+
+	// InspectStructType
+	gt.Msg = "Inspect().StructType.%s"
+	x = f.p.Types.Get("StructType").(*Type)
+	gt.Equal(STRUCT, x.Kind(), "Kind")
+	gt.Equal(BOOL, x.Object().(*Struct).Fields().Index(0).(*Field).Type().Kind(), "Field.Type.Kind")
+	gt.Equal(INT, x.Object().(*Struct).Fields().Index(1).(*Field).Type().Kind(), "Field.Type.Kind")
+	gt.Equal(STRING, x.Object().(*Struct).Fields().Index(2).(*Field).Type().Kind(), "Field.Type.Kind")
+	gt.Equal(INTERFACE, x.Object().(*Struct).Fields().Index(3).(*Field).Type().Kind(), "Field.Type.Kind")
+	gt.Equal(FUNC, x.Object().(*Struct).Fields().Index(4).(*Field).Type().Kind(), "Field.Type.Kind")
+	gt.Equal(FUNC, x.Object().(*Struct).Funcs().Index(0).(*Field).Type().Kind(), "Funcs.Type.Kind")
+	gt.Equal(1, x.Object().(*Struct).Methods().Len(), "Methods.Len")
+	gt.Equal("StructMethod", x.Object().(*Struct).Methods().Index(0).(*Func).Name(), "Methods.Name")
+	gt.Equal(INT, x.Object().(*Struct).Methods().Index(0).(*Func).Out().Index(0).(*Type).Kind(), "Method.Result.Kind")
 
 }
