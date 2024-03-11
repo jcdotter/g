@@ -18,9 +18,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-
-	"github.com/jcdotter/go/buffer"
-	"github.com/jcdotter/go/parser"
 )
 
 // UI Package Architecture
@@ -55,27 +52,26 @@ import (
 		http.ListenAndServe(":3000", nil)
 	}
 
-	ui.Div(ui.Id("div-001"), ui.Class("container", "mx-auto").Content(
-		ui.P(ui.Class("text-center").Content(
+	ui.El(`div`, `id="div-001" class="container mx-auto" visible`).Inner(
+		ui.El(`p`, "text-center").Inner(
 			ui.Text("Hello, World!"),
-		)),
-	))
+		),
+	)
 
 
 */
 
-/*
-ATTRIBUTES
-- id
-- class
-- style
-- data-*
-- aria-*
-*/
-type Class interface {
+// TODO:
+// build out components
+// capabilities for custom components
+// add css rendering
+// page rendering
+// think about how to include js
+
+/* type class interface {
 	Name() string
 	Render(ctx context.Context, w io.Writer) error
-}
+} */
 
 type Component interface {
 	Render(ctx context.Context, w io.Writer) error
@@ -85,65 +81,8 @@ type Page interface {
 	ServeHTTP(http.ResponseWriter, *http.Request)
 }
 
-type elem struct {
-	tag      string            // tag name
-	attrs    map[string]string // attributes with values
-	flags    []string          // boolean attributes
-	contents []Component       // child elements
-}
-
-func (c elem) Attrs(attrs map[string]string) {
-	for k, v := range attrs {
-		c.attrs[k] = v
-	}
-}
-
-func (c *elem) Flags(flags ...string) {
-	c.flags = append(c.flags, flags...)
-}
-
-func (c *elem) Content(contents ...Component) {
-	c.contents = append(c.contents, contents...)
-}
-
-func (c elem) buffer(ctx context.Context, b *buffer.Buffer) (err error) {
-	// TODO: add depth for pretty printing
-	if err = b.WriteByte('<'); err != nil {
-		return
-	}
-	b.MustWriteString(c.tag)
-	for k, v := range c.attrs {
-		b.MustWriteByte(' ').
-			MustWriteString(k).
-			MustWriteByte('=').
-			MustWriteByte('"').
-			MustWriteString(v).
-			MustWriteByte('"')
-	}
-	b.MustWriteByte('>')
-	for _, content := range c.contents {
-		if err = content.Render(ctx, b); err != nil {
-			return
-		}
-	}
-	b.MustWriteString("</").
-		MustWriteString(c.tag).
-		MustWriteByte('>')
-	return
-}
-
-func (c elem) Render(ctx context.Context, w io.Writer) (err error) {
-	if b, ok := w.(*buffer.Buffer); ok {
-		return c.buffer(ctx, b)
-	}
-	b := buffer.Pool.Get()
-	defer b.Free()
-	if err := c.buffer(ctx, b); err != nil {
-		return err
-	}
-	_, err = w.Write(b.Buffer())
-	return err
-}
+// ----------------------------------------------------------------------------
+// Implementation of raw text
 
 type text string
 
@@ -152,74 +91,12 @@ func (t text) Render(ctx context.Context, w io.Writer) error {
 	return err
 }
 
-func Attrs(keyvals ...string) map[string]string {
-	attrs := make(map[string]string)
-	for i := 0; i < len(keyvals); i += 2 {
-		attrs[keyvals[i]] = keyvals[i+1]
-	}
-	return attrs
-}
-
-var attrKeyEnd = parser.OR(parser.NOT(parser.IsChar), parser.Cond('=', '='))
-
-func ParseAttrs(attrs string) (kv map[string]string, f []string) {
-
-	// set up parser
-	kv = make(map[string]string)
-	f = make([]string, 0, 4)
-	var k string
-	var v []byte
-	var a = []byte(attrs)
-	var found bool
-	var pos int
-
-	// parse attributes
-	for i := 0; i < len(a); i++ {
-
-		// skip whitespace
-		if found, i = parser.Next(parser.IsChar, a, i); !found {
-			break
-		}
-
-		// parse key
-		found, pos = parser.Next(attrKeyEnd, a, i)
-		if !found {
-			f = append(f, string(a[i:]))
-			break
-		} else if a[pos] == ' ' {
-			f = append(f, string(a[i:pos]))
-			i = pos
-			continue
-		}
-		k = string(a[i:pos])
-		pos++
-
-		// parse value
-		v, i = parser.StringItem.Parse(a, pos)
-		kv[k] = string(v)
-
-	}
-	return
-}
-
-func Text(contents string) Component {
+// Text creates a new HTML text.
+func Text(contents string) text {
 	return text(contents)
 }
 
-func P(attrs string) Component {
-	// TODO:
-	// move parse to elem method
-	// expand Component interface methods
-	// add other html attrs for actions and htmx
-	// build out standard html elements
-	// add css rendering
-	// think about how to include js
-	// build out components
-	// capabilities for custom components
-	// pages
-	a, f := ParseAttrs(attrs)
-	return elem{tag: "p", attrs: a, flags: f}
-}
-
-func Comment() {
+// Comment creates a new HTML comment.
+func Comment(contents string) text {
+	return text("<!-- " + contents + " -->")
 }
