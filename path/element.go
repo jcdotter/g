@@ -216,7 +216,7 @@ func GetPackagePath(fullName string) (pkg string) {
 	if found, at := parser.Search([]byte(fullName), b, 0); found {
 		_, vbeg := parser.Find('v', b, at+len(fullName))
 		_, vend := parser.Next(parser.NOT(parser.IsChar), b, vbeg)
-		pkg = Join(PkgPath, fullName) + "@" + string(b[vbeg:vend-1])
+		pkg = Join(PkgPath, fullName) + "@" + string(b[vbeg:vend])
 		if f, err := os.Open(pkg); !os.IsNotExist(err) {
 			defer f.Close()
 			return

@@ -397,7 +397,7 @@ func Find(b byte, in []byte, at int) (found bool, foundAt int) {
 
 func Next(c Condition, in []byte, at int) (found bool, foundAt int) {
 	for foundAt = at; foundAt < len(in); foundAt++ {
-		if found, foundAt = c(in, foundAt); found {
+		if found, _ = c(in, foundAt); found {
 			return
 		}
 	}

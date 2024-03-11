@@ -1,0 +1,9 @@
+<html>
+<body>
+<div id="{{ .footer }}">
+</div>
+{{ for listing := .listings }}
+<List data="{{.}}"  />
+{{ end }}
+</body>
+</html>
