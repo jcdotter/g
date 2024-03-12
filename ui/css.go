@@ -21,10 +21,18 @@ import (
 	"github.com/jcdotter/go/data"
 )
 
+// CSS is a collection of CSS classes and
+// their properties declared and cached
 var CSS *data.Data
 
 // -----------------------------------------------------------------------------
 // CLASS
+
+// Procedure for creating a class object:
+// 1. search CSS cached classes for class name
+// 2. if not found, parse class name and search prefixes for decl func
+// 3. if decl found, create class object and add to CSS class cache
+// 4. return class object
 
 // Class represents a CSS class.
 type Class struct {
@@ -39,13 +47,14 @@ func Cls(class string) *Class {
 		return c.(*Class)
 	}
 	var pos int
+	var val string
 	for pos > -1 {
-		var val string
 		if decl, ok := decls[class]; ok {
 			c := cls(class, decl(class, val)...)
 			CSS.Set(class, c)
 			return c
 		}
+		val = ""
 		if pos = strings.LastIndex(class, "-"); pos > -1 {
 			class, val = class[:pos], class[pos+1:]
 		}
@@ -92,82 +101,133 @@ func (c *Class) Key() string {
 }
 
 // -----------------------------------------------------------------------------
-// CONFIG
+// CLASS DECLARATIONS
 
-// Procedure:
-// 1. search created classes for class name
-// 2. if not found, parse class name for decls
-// 3. if decls found, create class object and add to classes
-// 4. return class object
-
-var decls = map[string]decl{
-	"aspect":         css_aspect,
-	"container":      css_container,
-	"columns":        css_columns,
-	"break-after":    css_break,
-	"break-before":   css_break,
-	"break-inside":   css_break,
-	"box-decoration": css_box,
-	"box-border":     css_box,
-	"box-content":    css_box,
-	"block":          css_display,
-	"flex":           css_display,
-	"grid":           css_display,
-	"table":          css_display,
-	"flow-root":      css_display,
-	"contents":       css_display,
-	"list-item":      css_display,
-	"inline":         css_display,
-	"hidden":         css_display,
-}
-
-var css_size = map[string]string{
-	"auto": "auto",
-	"px":   "1px",
-	"3xs":  "16rem",
-	"2xs":  "18rem",
-	"xs":   "20rem",
-	"sm":   "24rem",
-	"md":   "28rem",
-	"lg":   "32rem",
-	"xl":   "36rem",
-	"2xl":  "42rem",
-	"3xl":  "48rem",
-	"4xl":  "56rem",
-	"5xl":  "64rem",
-	"6xl":  "72rem",
-	"7xl":  "80rem",
-	"0":    "0",
-	"1":    "0.25rem",
-	"2":    "0.5rem",
-	"3":    "0.75rem",
-	"4":    "1rem",
-	"5":    "1.25rem",
-	"6":    "1.5rem",
-	"7":    "1.75rem",
-	"8":    "2rem",
-	"9":    "2.25rem",
-	"10":   "2.5rem",
-	"12":   "3rem",
-	"16":   "4rem",
-	"20":   "5rem",
-	"24":   "6rem",
-	"28":   "7rem",
-	"32":   "8rem",
-	"36":   "9rem",
-	"40":   "10rem",
-	"44":   "11em",
-	"48":   "12rem",
-	"52":   "13rem",
-	"56":   "14rem",
-	"60":   "15rem",
-	"64":   "16rem",
-	"72":   "18rem",
-	"80":   "20rem",
-	"96":   "24rem",
-}
-
+// decl is a func that returns a css declaration
+// using the class name prefix and suffix as arguments.
 type decl func(string, string) []string
+
+var (
+	// css class declarations map
+	// class name prefix to a func
+	// that reurns a css declaration
+	decls = map[string]decl{
+
+		// layout class prefixes
+		"aspect":         css_aspect,
+		"container":      css_container,
+		"columns":        css_columns,
+		"break-after":    css_break,
+		"break-before":   css_break,
+		"break-inside":   css_break,
+		"box-decoration": css_box_decor,
+		"box-border":     css_box_size,
+		"box-content":    css_box_size,
+		"block":          css_display,
+		"flow-root":      css_display,
+		"contents":       css_display,
+		"list-item":      css_display,
+		"hidden":         css_display,
+		"table":          css_table,
+		"inline":         css_inline,
+		"float":          css_float,
+		"clear":          css_clear,
+		"isolation":      css_isolation,
+		"object":         css_object,
+		"overflow":       css_overflow,
+		"overflow-x":     css_overflow,
+		"overflow-y":     css_overflow,
+		"overscroll":     css_overscroll,
+		"overscroll-x":   css_overscroll,
+		"overscroll-y":   css_overscroll,
+		"static":         css_position,
+		"fixed":          css_position,
+		"absolute":       css_position,
+		"relative":       css_position,
+		"sticky":         css_position,
+		"inset":          css_inset,
+		"inset-x":        css_inset,
+		"inset-y":        css_inset,
+		"top":            css_inset,
+		"right":          css_inset,
+		"bottom":         css_inset,
+		"left":           css_inset,
+		"start":          css_inset,
+		"end":            css_inset,
+		"visible":        css_visibility,
+		"invisible":      css_visibility,
+		"collapse":       css_visibility,
+		"z":              css_z_index,
+
+		// flex & grid class prefixes
+		"flex":        css_flex,
+		"flex-row":    css_flex,
+		"flex-col":    css_flex,
+		"flex-wrap":   css_flex,
+		"flex-nowrap": css_flex,
+
+		"grid": css_display,
+	}
+
+	// builtin size aliases
+	css_size = map[string]string{
+		"auto": "auto",
+		"px":   "1px",
+		"3xs":  "16rem",
+		"2xs":  "18rem",
+		"xs":   "20rem",
+		"sm":   "24rem",
+		"md":   "28rem",
+		"lg":   "32rem",
+		"xl":   "36rem",
+		"2xl":  "42rem",
+		"3xl":  "48rem",
+		"4xl":  "56rem",
+		"5xl":  "64rem",
+		"6xl":  "72rem",
+		"7xl":  "80rem",
+		"0":    "0px",
+		"1":    "0.25rem",
+		"2":    "0.5rem",
+		"2.5":  "0.625rem",
+		"3":    "0.75rem",
+		"3.5":  "0.875rem",
+		"4":    "1rem",
+		"5":    "1.25rem",
+		"6":    "1.5rem",
+		"7":    "1.75rem",
+		"8":    "2rem",
+		"9":    "2.25rem",
+		"10":   "2.5rem",
+		"12":   "3rem",
+		"16":   "4rem",
+		"20":   "5rem",
+		"24":   "6rem",
+		"28":   "7rem",
+		"32":   "8rem",
+		"36":   "9rem",
+		"40":   "10rem",
+		"44":   "11em",
+		"48":   "12rem",
+		"52":   "13rem",
+		"56":   "14rem",
+		"60":   "15rem",
+		"64":   "16rem",
+		"72":   "18rem",
+		"80":   "20rem",
+		"96":   "24rem",
+		"1/2":  "50%",
+		"1/3":  "33.333333%",
+		"2/3":  "66.666667%",
+		"1/4":  "25%",
+		"2/4":  "50%",
+		"3/4":  "75%",
+		"full": "100%",
+	}
+)
+
+// -----------------------------------------------------------------------------
+// LAYOUT DECLARATIONS
 
 func css_aspect(c string, v string) []string {
 	switch v {
@@ -210,47 +270,171 @@ func css_break(c string, v string) []string {
 	return []string{c, v}
 }
 
-func css_box(c string, v string) []string {
+func css_box_decor(c string, v string) []string {
 	switch v {
-	case "", "clone", "slice":
-	default:
-		return nil
-	}
-	switch c {
-	case "box-decoration":
-		c = "box-decoration-break"
-	case "box-border", "box-content":
-		v = c
-		c = "box-sizing"
+	case "clone", "slice":
 	default:
 		return nil
 	}
 	return []string{c, v}
 }
 
+func css_box_size(c string, v string) []string {
+	switch v {
+	case "":
+	default:
+		return nil
+	}
+	return []string{"box-sizing", c}
+}
+
 func css_display(c string, v string) []string {
+	switch v {
+	case "":
+	default:
+		return nil
+	}
+	return []string{"display", c}
+}
+
+func css_table(c string, v string) []string {
 	switch v {
 	case "":
 		v = c
 	case "cell", "row", "column", "column-group", "footer-group", "header-group", "row-group":
-		if c != "table" {
-			return nil
-		}
-	case "block", "flex", "grid", "table":
-		if c != "inline" {
-			return nil
-		}
+		v = "table-" + v
 	default:
 		return nil
 	}
 	return []string{"display", v}
 }
 
-func parseBracket(v string) string {
-	if v[0] == '[' && v[len(v)-1] == ']' {
-		return v[1 : len(v)-1]
+func css_inline(c string, v string) []string {
+	switch v {
+	case "":
+		v = c
+	case "block", "flex", "grid", "table":
+		v = "inline-" + v
+	default:
+		return nil
 	}
-	return ""
+	return []string{"display", v}
+}
+
+func css_float(c string, v string) []string {
+	switch v {
+	case "start", "end":
+		v = "inline-" + v
+	case "left", "right", "none":
+	default:
+		return nil
+	}
+	return []string{"float", v}
+}
+
+func css_clear(c string, v string) []string {
+	switch v {
+	case "start", "end":
+		v = "inline-" + v
+	case "left", "right", "both", "none":
+	default:
+		return nil
+	}
+	return []string{"clear", v}
+}
+
+func css_isolation(c string, v string) []string {
+	switch v {
+	case "isolate", "auto":
+	default:
+		return nil
+	}
+	return []string{"isolation", v}
+}
+
+func css_object(c string, v string) []string {
+	switch v {
+	case "contain", "cover", "fill", "none", "scale-down":
+		c += "-fit"
+	case "bottom", "center", "left", "right", "top":
+		c += "-position"
+	case "left-bottom", "left-top", "right-bottom", "right-top":
+		c += "-position"
+		v = strings.Replace(v, "-", " ", 1)
+	default:
+		return nil
+	}
+	return []string{c, v}
+}
+
+func css_overflow(c string, v string) []string {
+	switch c {
+	case "auto", "hidden", "clip", "visible", "scroll":
+	default:
+		return nil
+	}
+	return []string{c, v}
+}
+
+func css_overscroll(c string, v string) []string {
+	switch c {
+	case "auto", "contain", "none":
+	default:
+		return nil
+	}
+	return []string{c, v}
+}
+
+func css_position(c string, v string) []string {
+	switch c {
+	case "static", "fixed", "absolute", "relative", "sticky":
+	default:
+		return nil
+	}
+	return []string{"position", c}
+}
+
+func css_inset(c string, v string) []string {
+	if n, ok := css_size[v]; ok {
+		v = n
+	} else if v = parseBracket(v); v == "" {
+		return nil
+	}
+	return []string{c, v}
+}
+
+func css_visibility(c string, v string) []string {
+	switch c {
+	case "visible", "hidden", "collapse":
+	default:
+		return nil
+	}
+	return []string{"visibility", c}
+}
+
+func css_z_index(c string, v string) []string {
+	switch c {
+	case "0", "10", "20", "30", "40", "50", "auto":
+	default:
+		return nil
+	}
+	return []string{"z-index", c}
+}
+
+// -----------------------------------------------------------------------------
+// FLEX & GRID DECLARATIONS
+
+func css_flex(c string, v string) []string {
+	switch c {
+		switch v {
+		case "":
+			c = "display"
+		case "reverse":
+		default:
+			return nil
+		}
+	}
+	return []string{"flex-direction", v}
 }
 
 // -----------------------------------------------------------------------------
@@ -606,12 +790,11 @@ var Classes = data.Of(
 )
 
 // -----------------------------------------------------------------------------
-// CLASS ROUTES
+// HELPERS
 
-// ClassRoutes returns the routes for the classes.
-func ClassRoutes(class string) {
-	switch {
-	case class[:5] == "aspect":
-
+func parseBracket(v string) string {
+	if v[0] == '[' && v[len(v)-1] == ']' {
+		return v[1 : len(v)-1]
 	}
+	return ""
 }
