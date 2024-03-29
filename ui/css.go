@@ -425,7 +425,7 @@ func css_z_index(c string, v string) []string {
 // FLEX & GRID DECLARATIONS
 
 func css_flex(c string, v string) []string {
-	switch c {
+	/* switch c {
 		switch v {
 		case "":
 			c = "display"
@@ -433,7 +433,7 @@ func css_flex(c string, v string) []string {
 		default:
 			return nil
 		}
-	}
+	} */
 	return []string{"flex-direction", v}
 }
 
