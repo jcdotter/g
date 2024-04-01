@@ -1,0 +1,20 @@
+- Name: SampleAPI
+  Url: https://api.sampleapis.com/
+  Header: 
+    - Key: Content-Type
+      Value: application/json
+  Resources:
+    - Name: Colors
+      Url: https://api.sampleapis.com/csscolornames/colors
+      Methods:
+        - Name: GET
+          Response:
+            - Header: 
+                - Key: Content-Type
+                  Value: application/json
+    - Name: Color
+      Url: https://api.sampleapis.com/csscolornames/colors/:id
+      Methods:
+        - Method: GET
+
+```

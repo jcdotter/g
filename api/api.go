@@ -1,6 +1,8 @@
 package api
 
-import "github.com/jcdotter/go/data"
+import (
+	"github.com/jcdotter/go/data"
+)
 
 // ----------------------------------------------------------------------------
 // API TYPES
@@ -100,6 +102,23 @@ func (t ContentType) String() string {
 }
 
 // ----------------------------------------------------------------------------
+// DATA TYPES
+
+// DataType is the type of a data element
+// in the request or response
+type DataType byte
+
+const (
+	BOOL DataType = iota
+	INT
+	FLOAT
+	STRING
+)
+
+type Object map[string]any
+type List []any
+
+// ----------------------------------------------------------------------------
 // API
 // api.endpoint.method.request
 
@@ -107,75 +126,77 @@ type Api struct {
 	Protocol  Protocol
 	Auth      *Api
 	Url       string
-	endpoints endpoints
+	Resources *data.Data
+	Params    *data.Data
+	Header    *data.Data
+	Data      *data.Data
 }
 
-type endpoints struct{ *data.Data }
-
-func Endpoints(e ...*Endpoint) endpoints {
-	return endpoints{data.Of(e...)}
+func (a *Api) Resource(key string) *Resource {
+	var el any
+	if el := a.Resources.Get(key); el == nil {
+		return nil
+	}
+	r := el.(*Resource)
+	return &Resource{
+		Uri:       key,
+		Methods:   r.Methods,
+		Resources: r.Resources,
+	}
 }
 
-func (e *endpoints) Index(i int) *Endpoint {
-	return e.Data.Index(i).(*Endpoint)
+type Resource struct {
+	Uri       string
+	Methods   *data.Data
+	Resources *data.Data
+	Params    *data.Data
+	Header    *data.Data
+	Data      *data.Data
 }
 
-func (e *endpoints) Get(key string) *Endpoint {
-	return e.Data.Get(key).(*Endpoint)
+func (r *Resource) Key() string {
+	return r.Uri
 }
 
-func (e *endpoints) Add(value *Endpoint) *endpoints {
-	e.Data.Add(value)
-	return e
+func (r *Resource) Resource(id, name string) *Resource {
+	s := r.Resources.Get(name).(*Resource)
+	return &Resource{
+		Uri:       id + "/" + name,
+		Methods:   s.Methods,
+		Resources: s.Resources,
+	}
 }
 
-type Endpoint struct {
-	Uri     string
-	Content ContentType
-	Allow   ContentType
-	Methods Methods
+func (r *Resource) Method(key string) *Method {
+	return r.Methods.Get(key).(*Method)
 }
 
-func (e *Endpoint) Key() string {
-	return e.Uri
-}
-
-type Methods struct{ *data.Data }
-
-func (m *Methods) Index(i int) *Method {
-	return m.Data.Index(i).(*Method)
-}
-
-func (m *Methods) Get(key string) *Method {
-	return m.Data.Get(key).(*Method)
-}
-
-func (m *Methods) Add(value *Method) *Methods {
-	m.Data.Add(value)
-	return m
-}
+func (r *Resource) Get()    {}
+func (r *Resource) Post()   {}
+func (r *Resource) Put()    {}
+func (r *Resource) Delete() {}
 
 type Method struct {
-	Type     MethodType
+	Name     string
 	Request  *Request
 	Response *Response
 }
 
 func (m *Method) Key() string {
-	return m.Type.String()
+	return m.Name
 }
 
 type Request struct {
 	Path   *data.Data
 	Params *data.Data
 	Header *data.Data
-	Body   *data.Data
+	Body   any
 	// add webhooks
 }
 
 type Response struct {
 	Header *data.Data
-	Body   *data.Data
+	Body   any
 }
 
 type param struct {

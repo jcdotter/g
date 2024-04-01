@@ -28,24 +28,36 @@ func TestNew(t *testing.T) {
 	a := &Api{
 		Protocol: REST,
 		Url:      "https://api.sampleapis.com/",
-		Endpoints: Endpoints{data.Of(
-			&Endpoint{
-				Uri:     "/csscolornames/colors",
-				Content: JSON,
-				Allow:   JSON,
-				Methods: Methods{data.Of(
+		Resources: data.Of(
+			&Resource{
+				Uri: "csscolornames/colors",
+				Methods: data.Of(
 					&Method{
-						Type: GET,
-						Request: &Request{
-							Path: data.Of(
-								Param("id", "int"),
+						Name: "GET",
+						Response: &Response{
+							Header: data.Of(
+								Param("content-type", "application/json"),
 							),
+							Body: List{
+								Object{
+									"id":   INT,
+									"name": STRING,
+									"hex":  STRING,
+								},
+							},
 						},
-						Response: &Response{},
 					},
-				)},
+				),
 			},
-		)},
+		),
 	}
-	a.Endpoints.Get("/csscolornames/colors").Methods.Get(GET).Request.Path.Get("id")
+
+	// []any, map[string]any, BOOL, INT, FLOAT, STRING
+	_ = List{
+		Object{
+			"id":   INT,
+			"name": STRING,
+			"hex":  STRING,
+		},
+	}
 }
