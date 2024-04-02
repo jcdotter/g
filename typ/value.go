@@ -14,7 +14,10 @@
 
 package typ
 
-import "unsafe"
+import (
+	"reflect"
+	"unsafe"
+)
 
 // ------------------------------------------------------------ /
 // Value IMPLEMENTATION
@@ -26,4 +29,36 @@ type Value struct {
 	typ *Type
 	ptr unsafe.Pointer
 	flag
+}
+
+func ValueOf(a any) Value {
+	v := reflect.ValueOf(a)
+	return FromReflect(v)
+}
+
+func ValueOfV(a any) Value {
+	if n, is := a.(Value); !is {
+		return ValueOf(a)
+	} else {
+		return n
+	}
+}
+
+func FromReflect(v reflect.Value) Value {
+	return *(*Value)(unsafe.Pointer(&v))
+}
+
+func (v Value) Reflect() reflect.Value {
+	return *(*reflect.Value)(unsafe.Pointer(&v))
+}
+
+func (v Value) Init() Value {
+	if v.ptr == nil {
+		return v.typ.NewValue().Elem()
+	}
+	k := v.Kind()
+	if (k == MAP || k == SLICE || k == POINTER) && *(*unsafe.Pointer)(v.ptr) == nil {
+		*(*unsafe.Pointer)(v.ptr) = *(*unsafe.Pointer)(v.typ.NewValue().Elem().ptr)
+	}
+	return v
 }
