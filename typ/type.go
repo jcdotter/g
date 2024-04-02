@@ -127,7 +127,7 @@ func (t *Type) KindX() byte {
 	case SLICE: // check if byte array
 		ek := (*sliceType)(unsafe.Pointer(t)).elem.kind & kindMask
 		if ek == 8 || ek == 10 { // []byte or []rune
-			return BYTES
+			return BINARY
 		}
 	case ARRAY: // check if uuid
 		a := (*arrayType)(unsafe.Pointer(t))
@@ -176,7 +176,7 @@ func (t *Type) DeepPtrElem() *Type {
 // or is a pointer to one these types
 func (t *Type) IsData() bool {
 	k := t.Kind()
-	return k == ARRAY || k == CHAN || k == MAP || k == SLICE || k == STRUCT || k == BYTES || k == INTERFACE ||
+	return k == ARRAY || k == CHAN || k == MAP || k == SLICE || k == STRUCT || k == BINARY || k == INTERFACE ||
 		(k == POINTER && t.DeepPtrElem().IsData())
 }
 

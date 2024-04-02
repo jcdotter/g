@@ -14,32 +14,15 @@
 
 package typ
 
-import "unsafe"
+import (
+	"fmt"
+	"testing"
+)
 
-func offset(p unsafe.Pointer, offset uintptr) unsafe.Pointer {
-	return unsafe.Pointer(uintptr(p) + offset)
-}
+func TestTest(t *testing.T) {
+	s := []string{"a", "b", "c"}
+	SliceOf(&s).Extend(3)
+	s[5] = "f"
+	fmt.Println(len(s), s)
 
-func offseti(p unsafe.Pointer, offset int) unsafe.Pointer {
-	return unsafe.Pointer(uintptr(p) + uintptr(offset))
-}
-
-func prepScanDest(v Value, dest any) Value {
-	d := ValueOf(dest)
-
-	// dest must be a pointer
-	if d.Kind() != POINTER {
-		panic("typ: not a pointer")
-	}
-	d = d.Elem()
-
-	// dest must have the capacity
-	// to hold the value
-	if d.Len() < v.Len() {
-		if d.Kind() != SLICE {
-			panic("typ: not enough space")
-		}
-		d.Slice().Extend(v.Len() - d.Len())
-	}
-	return d
 }

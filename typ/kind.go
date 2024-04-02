@@ -47,15 +47,15 @@ const (
 
 // go datatype aliases
 const (
-	BYTE  byte = 30 + iota // alias for UINT8
-	RUNE                   // alias for INT32
-	ANY                    // alias for INTERFACE
-	ERROR                  // alias for interface{Error() string}
-	ELIPS                  // alias for ...
-	TYPE                   // alias for Type
-	BYTES                  // alias for []byte
-	TIME                   // alias for struct{uint64, int64, uintptr}
-	UUID                   // alias for [16]byte
+	BYTE   byte = 30 + iota // alias for UINT8
+	RUNE                    // alias for INT32
+	ANY                     // alias for INTERFACE
+	ERROR                   // alias for interface{Error() string}
+	ELIPS                   // alias for ...
+	TYPE                    // alias for Type
+	BINARY                  // alias for []byte
+	TIME                    // alias for struct{uint64, int64, uintptr}
+	UUID                    // alias for [16]byte
 )
 
 var kindNames = []string{
@@ -92,7 +92,7 @@ var kindNames = []string{
 	ERROR:         "error",
 	ELIPS:         "...",
 	TYPE:          "type",
-	BYTES:         "[]byte",
+	BINARY:        "binary",
 	TIME:          "time",
 	UUID:          "uuid",
 }

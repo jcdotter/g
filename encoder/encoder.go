@@ -9,16 +9,16 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	r "reflect"
 	"strconv"
+	"time"
 	"unsafe"
 
-	"github.com/jcdotter/go/typ"
+	t "github.com/jcdotter/go/typ"
 )
 
 // ------------------------------------------------------------ /
 // Speed:
-// 1. Pass structure parts to children and append intents, rather than using ancestry
+// 1. Pass structure parts to children and append indents, rather than using ancestry
 // 2. encoding pkg does not handle recursive structures
 // ------------------------------------------------------------ /
 
@@ -81,9 +81,9 @@ type Marshaler struct {
 	ivalEnd    []byte
 	sliceParts map[string][3][]byte
 	mapParts   map[string][3][]byte
-	hasTag     map[r.Type]bool
-	tagKeys    map[r.Type][]string
-	methods    map[r.Type]int
+	hasTag     map[*t.Type]bool
+	tagKeys    map[*t.Type][]string
+	methods    map[*t.Type]int
 }
 
 type InlineSyntax struct {
@@ -95,7 +95,7 @@ type InlineSyntax struct {
 }
 
 type ancestor struct {
-	typ     r.Type
+	typ     t.Type
 	pointer uintptr
 }
 
@@ -308,22 +308,22 @@ func (m Marshaler) Formatted(indent ...int) string {
 }
 
 func (m Marshaler) Map() map[string]any {
-	v := r.ValueOf(m.value)
+	v := t.ValueOf(m.value)
 	switch v.Kind() {
-	case r.Map:
+	case t.MAP:
 		return m.value.(map[string]any)
-	case r.Slice:
-		return slice{v}.Map()
+	case t.SLICE:
+		return v.Slice().Map()
 	}
 	return nil
 }
 
 func (m Marshaler) Slice() []any {
-	v := r.ValueOf(m.value)
+	v := t.ValueOf(m.value)
 	switch v.Kind() {
-	case r.Map:
-		return hmap{v}.Slice()
-	case r.Slice:
+	case t.MAP:
+		return v.Map().Values()
+	case t.SLICE:
 		return m.value.([]any)
 	}
 	return nil
@@ -336,45 +336,45 @@ func (m Marshaler) Slice() []any {
 
 func (m *Marshaler) Marshal(a any) *Marshaler {
 	m.Reset()
-	m.marshal(r.ValueOf(a))
+	m.marshal(t.ValueOf(a))
 	m.setLen()
 	return m
 }
 
-func (m *Marshaler) marshal(v r.Value, ancestry ...ancestor) {
+func (m *Marshaler) marshal(v t.Value, ancestry ...ancestor) {
 	if v.IsNil() {
 		m.bufferBytes(m.Null)
 		return
 	}
-	switch typ.FromReflectType(v.Type()).KIND() {
-	case typ.BOOL:
+	switch v.KindX() {
+	case t.BOOL:
 		m.marshalBool(v.Bool())
-	case typ.INT, typ.INT8, typ.INT16, typ.INT32, typ.INT64, typ.UINT, typ.UINT8, typ.UINT16, typ.UINT32, typ.UINT64, typ.UINTPTR, typ.FLOAT32, typ.FLOAT64, typ.COMPLEX64, typ.COMPLEX128:
+	case t.INT, t.INT8, t.INT16, t.INT32, t.INT64, t.UINT, t.UINT8, t.UINT16, t.UINT32, t.UINT64, t.UINTPTR, t.FLOAT32, t.FLOAT64, t.COMPLEX64, t.COMPLEX128:
 		m.marshalNum(v)
-	case typ.ARRAY:
-		m.marshalArray((ARRAY)(v), ancestry...)
-	case typ.FUNC:
+	case t.ARRAY:
+		m.marshalArray(v.Slice(), ancestry...)
+	case t.FUNC:
 		m.marshalFunc(v)
-	case typ.INTERFACE:
+	case t.INTERFACE:
 		m.marshalInterface(v, ancestry...)
-	case typ.MAP:
-		m.marshalMap((MAP)(v), ancestry...)
-	case typ.POINTER:
+	case t.MAP:
+		m.marshalMap(v.Map(), ancestry...)
+	case t.POINTER:
 		m.marshalPointer(v, ancestry...)
-	case typ.SLICE:
-		m.marshalSlice((SLICE)(v), ancestry...)
-	case typ.STRING:
-		m.marshalString(*(*string)(v.ptr))
-	case typ.STRUCT:
-		m.marshalStruct((STRUCT)(v), ancestry...)
-	case typ.UNSAFEPOINTER:
-		m.marshalUnsafePointer(*(*unsafe.Pointer)(v.ptr))
-	case typ.TIME:
-		m.marshalTime(*(*TIME)(v.ptr))
-	case typ.UUID:
-		m.marshalUuid(*(*UUID)(v.ptr))
-	case typ.BYTES:
-		m.marshalBytes(*(*BYTES)(v.ptr))
+	case t.SLICE:
+		m.marshalSlice(v.Slice(), ancestry...)
+	case t.STRING:
+		m.marshalString(*(*string)(v.Pointer()))
+	case t.STRUCT:
+		m.marshalStruct(v.Struct(), ancestry...)
+	case t.UNSAFEPOINTER:
+		m.marshalUnsafePointer(*(*unsafe.Pointer)(v.Pointer()))
+	case t.TIME:
+		m.marshalTime(*(*time.Time)(v.Pointer()))
+	case t.UUID:
+		m.marshalUuid(*(*[16]byte)(v.Pointer()))
+	case t.BINARY:
+		m.marshalBytes(*(*[]byte)(v.Pointer()))
 	default:
 		panic("cannot marshal type '" + v.typ.String() + "'")
 	}
@@ -394,38 +394,38 @@ func (m *Marshaler) marshalBool(b bool) {
 	m.bufferBytes(bytes)
 }
 
-func (m *Marshaler) marshalNum(v r.Value) {
+func (m *Marshaler) marshalNum(v t.Value) {
 	var bytes []byte
 	switch v.Kind() {
-	case r.Int:
+	case t.INT:
 		bytes = []byte(strconv.FormatInt(*(*int64)(v.ptr), 10))
-	case r.Int8:
+	case t.INT8:
 		bytes = []byte(strconv.FormatInt(int64(*(*int8)(v.ptr)), 10))
-	case r.Int16:
+	case t.INT16:
 		bytes = []byte(strconv.FormatInt(int64(*(*int16)(v.ptr)), 10))
-	case r.Int32:
+	case t.INT32:
 		bytes = []byte(strconv.FormatInt(int64(*(*int32)(v.ptr)), 10))
-	case Int64:
+	case t.INT64:
 		bytes = []byte(strconv.FormatInt(*(*int64)(v.ptr), 10))
-	case Uint:
+	case t.UINT:
 		bytes = []byte(strconv.FormatUint(*(*uint64)(v.ptr), 10))
-	case Uint8:
+	case t.UINT8:
 		bytes = []byte(strconv.FormatUint(uint64(*(*uint8)(v.ptr)), 10))
-	case Uint16:
+	case t.UINT16:
 		bytes = []byte(strconv.FormatUint(uint64(*(*uint16)(v.ptr)), 10))
-	case Uint32:
+	case t.UINT32:
 		bytes = []byte(strconv.FormatUint(uint64(*(*uint32)(v.ptr)), 10))
-	case Uint64:
+	case t.UINT64:
 		bytes = []byte(strconv.FormatUint(*(*uint64)(v.ptr), 10))
-	case Uintptr:
+	case t.UINTPTR:
 		bytes = []byte(strconv.FormatUint(*(*uint64)(v.ptr), 10))
-	case Float32:
+	case t.FLOAT32:
 		bytes = []byte(strconv.FormatFloat(float64(*(*float32)(v.ptr)), 'f', -1, 64))
-	case Float64:
+	case t.FLOAT64:
 		bytes = []byte(strconv.FormatFloat(*(*float64)(v.ptr), 'f', -1, 64))
-	case Complex64:
+	case t.COMPLEX64:
 		bytes = []byte(strconv.FormatComplex(complex128(*(*complex64)(v.ptr)), 'f', -1, 128))
-	case Complex128:
+	case t.COMPLEX128:
 		bytes = []byte(strconv.FormatComplex(*(*complex128)(v.ptr), 'f', -1, 128))
 	default:
 		panic("cannot marshal type '" + v.typ.String() + "'")
@@ -584,15 +584,11 @@ func (m *Marshaler) marshalUnsafePointer(p unsafe.Pointer) {
 	m.marshalString(fmt.Sprintf("%p", p))
 }
 
-func (m *Marshaler) marshalField(f FIELD) {
-	m.marshal(f.VALUE())
-}
-
-func (m *Marshaler) marshalTime(t TIME) {
+func (m *Marshaler) marshalTime(t time.Time) {
 	m.marshalString(t.String())
 }
 
-func (m *Marshaler) marshalUuid(u UUID) {
+func (m *Marshaler) marshalUuid(u [16]byte) {
 	m.marshalString(u.String())
 }
 
@@ -974,9 +970,7 @@ func (m *Marshaler) Unmarshal(bytes ...[]byte) *Marshaler {
 	if len(bytes) > 0 {
 		m.buffer = bytes[0]
 		m.len = len(m.buffer)
-	} /*  else if m.value != nil && m.value != any(nil) {
-		return m
-	} */
+	}
 	m.value = nil
 	var slice []any
 	var hmap map[string]any
