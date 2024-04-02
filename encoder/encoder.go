@@ -2,15 +2,18 @@
 // Use of this source code is governed by a
 // license that can be found in the gotype LICENSE file.
 
-package gotype
+package encoder
 
 import (
 	"bytes"
 	"fmt"
 	"math"
 	"reflect"
+	r "reflect"
 	"strconv"
 	"unsafe"
+
+	"github.com/jcdotter/go/typ"
 )
 
 // ------------------------------------------------------------ /
@@ -78,9 +81,9 @@ type Marshaler struct {
 	ivalEnd    []byte
 	sliceParts map[string][3][]byte
 	mapParts   map[string][3][]byte
-	hasTag     map[*TYPE]bool
-	tagKeys    map[*TYPE][]string
-	methods    map[*TYPE]int
+	hasTag     map[r.Type]bool
+	tagKeys    map[r.Type][]string
+	methods    map[r.Type]int
 }
 
 type InlineSyntax struct {
@@ -89,6 +92,11 @@ type InlineSyntax struct {
 	SliceEnd   []byte // the characters that end a slice or array
 	MapStart   []byte // the characters that start a hash map
 	MapEnd     []byte // the characters that end a hash map
+}
+
+type ancestor struct {
+	typ     r.Type
+	pointer uintptr
 }
 
 // ------------------------------------------------------------ /
@@ -300,22 +308,22 @@ func (m Marshaler) Formatted(indent ...int) string {
 }
 
 func (m Marshaler) Map() map[string]any {
-	v := ValueOf(m.value)
+	v := r.ValueOf(m.value)
 	switch v.Kind() {
-	case Map:
+	case r.Map:
 		return m.value.(map[string]any)
-	case Slice:
-		return (SLICE)(v).Map()
+	case r.Slice:
+		return slice{v}.Map()
 	}
 	return nil
 }
 
 func (m Marshaler) Slice() []any {
-	v := ValueOf(m.value)
+	v := r.ValueOf(m.value)
 	switch v.Kind() {
-	case Map:
-		return (MAP)(v).Slice()
-	case Slice:
+	case r.Map:
+		return hmap{v}.Slice()
+	case r.Slice:
 		return m.value.([]any)
 	}
 	return nil
@@ -327,51 +335,45 @@ func (m Marshaler) Slice() []any {
 // ------------------------------------------------------------ /
 
 func (m *Marshaler) Marshal(a any) *Marshaler {
-	return ValueOf(a).Marshal(m)
-}
-
-func (v VALUE) Marshal(m *Marshaler) *Marshaler {
 	m.Reset()
-	m.marshal(v)
+	m.marshal(r.ValueOf(a))
 	m.setLen()
 	return m
 }
 
-func (m *Marshaler) marshal(v VALUE, ancestry ...ancestor) {
+func (m *Marshaler) marshal(v r.Value, ancestry ...ancestor) {
 	if v.IsNil() {
 		m.bufferBytes(m.Null)
 		return
 	}
-	switch v.KIND() {
-	case Bool:
+	switch typ.FromReflectType(v.Type()).KIND() {
+	case typ.BOOL:
 		m.marshalBool(v.Bool())
-	case Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32, Uint64, Uintptr, Float32, Float64, Complex64, Complex128:
+	case typ.INT, typ.INT8, typ.INT16, typ.INT32, typ.INT64, typ.UINT, typ.UINT8, typ.UINT16, typ.UINT32, typ.UINT64, typ.UINTPTR, typ.FLOAT32, typ.FLOAT64, typ.COMPLEX64, typ.COMPLEX128:
 		m.marshalNum(v)
-	case Array:
+	case typ.ARRAY:
 		m.marshalArray((ARRAY)(v), ancestry...)
-	case Func:
+	case typ.FUNC:
 		m.marshalFunc(v)
-	case Interface:
+	case typ.INTERFACE:
 		m.marshalInterface(v, ancestry...)
-	case Map:
+	case typ.MAP:
 		m.marshalMap((MAP)(v), ancestry...)
-	case Pointer:
+	case typ.POINTER:
 		m.marshalPointer(v, ancestry...)
-	case Slice:
+	case typ.SLICE:
 		m.marshalSlice((SLICE)(v), ancestry...)
-	case String:
+	case typ.STRING:
 		m.marshalString(*(*string)(v.ptr))
-	case Struct:
+	case typ.STRUCT:
 		m.marshalStruct((STRUCT)(v), ancestry...)
-	case UnsafePointer:
+	case typ.UNSAFEPOINTER:
 		m.marshalUnsafePointer(*(*unsafe.Pointer)(v.ptr))
-	case Field:
-		m.marshalField(*(*FIELD)(unsafe.Pointer(&v)))
-	case Time:
+	case typ.TIME:
 		m.marshalTime(*(*TIME)(v.ptr))
-	case Uuid:
+	case typ.UUID:
 		m.marshalUuid(*(*UUID)(v.ptr))
-	case Bytes:
+	case typ.BYTES:
 		m.marshalBytes(*(*BYTES)(v.ptr))
 	default:
 		panic("cannot marshal type '" + v.typ.String() + "'")
@@ -392,16 +394,16 @@ func (m *Marshaler) marshalBool(b bool) {
 	m.bufferBytes(bytes)
 }
 
-func (m *Marshaler) marshalNum(v VALUE) {
+func (m *Marshaler) marshalNum(v r.Value) {
 	var bytes []byte
 	switch v.Kind() {
-	case Int:
+	case r.Int:
 		bytes = []byte(strconv.FormatInt(*(*int64)(v.ptr), 10))
-	case Int8:
+	case r.Int8:
 		bytes = []byte(strconv.FormatInt(int64(*(*int8)(v.ptr)), 10))
-	case Int16:
+	case r.Int16:
 		bytes = []byte(strconv.FormatInt(int64(*(*int16)(v.ptr)), 10))
-	case Int32:
+	case r.Int32:
 		bytes = []byte(strconv.FormatInt(int64(*(*int32)(v.ptr)), 10))
 	case Int64:
 		bytes = []byte(strconv.FormatInt(*(*int64)(v.ptr), 10))

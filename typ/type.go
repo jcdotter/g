@@ -28,7 +28,7 @@ import (
 
 var (
 	__ttime       = (any)(time.Time{})
-	__timefields  = (*structType)(unsafe.Pointer((*Value)(unsafe.Pointer(&__ttime)).typ)).fields
+	__timefields  = (*structType)(unsafe.Pointer((*Iface)(unsafe.Pointer(&__ttime)).Type)).fields
 	__timefield0b = __timefields[0].name.bytes
 	__timefield0t = __timefields[0].typ
 	__timefield1b = __timefields[1].name.bytes
@@ -63,13 +63,13 @@ func TypeOf(a any) *Type {
 // FromReflectType returns the typ of reflect.Type t
 func FromReflectType(t reflect.Type) *Type {
 	a := (any)(t)
-	return (*Type)((*Value)(unsafe.Pointer(&a)).ptr)
+	return (*Type)((*Iface)(unsafe.Pointer(&a)).Pointer)
 }
 
 // New returns an empty pointer to a new value of the Type
 func (t *Type) New() Value {
 	if t != nil {
-		return Value{t.PtrType(), unsafe_New(t), flag(POINTER)}
+		return Iface{t.PtrType(), unsafe_New(t), flag(POINTER)}.Value()
 	}
 	panic("call to New on nil type")
 }
@@ -79,12 +79,13 @@ func (t *Type) NewValue() Value {
 	n := t.New()
 	switch t.Kind() {
 	case MAP:
-		*(*unsafe.Pointer)(n.ptr) = makemap(t, 0, nil)
+		*(*unsafe.Pointer)(n.Pointer()) = makemap(t, 0, nil)
 	case POINTER:
-		*(*unsafe.Pointer)(n.ptr) = t.Elem().NewValue().ptr
+		*(*unsafe.Pointer)(n.Pointer()) = t.Elem().NewValue().Pointer()
 	case SLICE:
 		t := (*sliceType)(unsafe.Pointer(t)).elem
-		*(*unsafe.Pointer)(&n.ptr) = unsafe.Pointer(&sliceHeader{unsafe_NewArray(t, 0), 0, 0})
+		p := n.Pointer()
+		*(*unsafe.Pointer)(&p) = unsafe.Pointer(&sliceHeader{unsafe_NewArray(t, 0), 0, 0})
 	}
 	return n
 }
@@ -118,9 +119,9 @@ func (t *Type) Kind() byte {
 	return t.kind & kindMask
 }
 
-// KIND returns the typ KIND of the Type
-// which includes Bytes, Field, Time, Uuid
-func (t *Type) KIND() byte {
+// KindX returns the typ kind of the Type
+// to include aliases and special types
+func (t *Type) KindX() byte {
 	k := t.kind & kindMask
 	switch k {
 	case SLICE: // check if byte array
