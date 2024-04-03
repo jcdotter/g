@@ -15,6 +15,7 @@
 package typ
 
 import (
+	"crypto/rand"
 	"reflect"
 	"strconv"
 	"unsafe"
@@ -474,67 +475,86 @@ func (b Binary) String() string {
 
 type UID [16]byte
 
-// NewUID returns a new ULID
-// Universally Unique Lexicographically Sortable Identifier
+// Uid returns a new random UUID
 func Uid() UID {
-	return [16]byte{}
+	return generateUid()
 }
 
 // UUID returns a UUID type converter
-func UIDOf(uuid any) UID {
+func UidOf(uuid any) UID {
 	switch u := uuid.(type) {
 	case UID:
 		return u
 	case [16]byte:
 		return u
 	case []byte:
-		parseUidBytes(u)
+		return parseUidBytes(u)
 	case string:
 		return parseUidString(u)
 	}
 	panic("typ.UUIDOf: not a UUID")
 }
 
-func parseUidBytes(b []byte) UID {
+func parseUidBytes(b []byte) (uid UID) {
 	if len(b) != 16 {
 		panic("typ.parseUuidBytes: invalid length")
 	}
-	var uuid UID
-	copy(uuid[:], b)
-	return uuid
+	copy(uid[:], b)
+	return
 }
 
-func parseUidString(s string) UID {
+func parseUidString(s string) (uid UID) {
 	switch len(s) {
 	case 32:
-		return parseUidHex(s)
+		for i := 0; i < 16; i++ {
+			uid[i] = parseHexByte(s[i*2 : i*2+2])
+		}
+		return
 	case 36:
-		return parseUidDashed(s)
+		for i, j := 0, 0; i < 36; i++ {
+			if s[i] == '-' {
+				continue
+			}
+			uid[j] = parseHexByte(s[i : i+2])
+			j++
+			i++
+		}
+		return
 	}
 	panic("typ.parseUuidString: invalid length")
-}
-
-func parseUidHex(s string) UID {
-	var uuid UID
-	for i := 0; i < 16; i++ {
-		uuid[i] = parseHexByte(s[i*2 : i*2+2])
-	}
-	return uuid
-}
-
-func parseUidDashed(s string) UID {
-	var uuid UID
-	for i, j := 0, 0; i < 36; i++ {
-		if s[i] == '-' {
-			continue
-		}
-		uuid[j] = parseHexByte(s[i : i+2])
-		j++
-	}
-	return uuid
 }
 
 func parseHexByte(s string) byte {
 	b, _ := strconv.ParseUint(s, 16, 8)
 	return byte(b)
+}
+
+func generateUid() (uid UID) {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	copy(uid[:], b)
+	uid[6] = (uid[6] & 0x0f) | 0x40
+	uid[8] = (uid[8] & 0x3f) | 0x80
+	return
+}
+
+func (u UID) Bytes() []byte {
+	return u[:]
+}
+
+func (u UID) String() string {
+	hex := make([]byte, 32)
+	for i, v := range u {
+		hex[i*2] = hexChar(v >> 4)
+		hex[i*2+1] = hexChar(v & 0x0f)
+	}
+	str := make([]byte, 0, 36)
+	return string(append(append(append(append(append(append(append(append(append(str, hex[:8]...), '-'), hex[8:12]...), '-'), hex[12:16]...), '-'), hex[16:20]...), '-'), hex[20:]...))
+}
+
+func hexChar(b byte) byte {
+	if b < 10 {
+		return '0' + b
+	}
+	return 'a' + b - 10
 }

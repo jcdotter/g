@@ -26,3 +26,12 @@ func TestTest(t *testing.T) {
 	fmt.Println(len(s), s)
 
 }
+
+func TestUid(t *testing.T) {
+	u := generateUid()
+	s := u.String()
+	fmt.Println(len(s), s)
+	u = UidOf(s)
+	s = u.String()
+	fmt.Println(s)
+}
