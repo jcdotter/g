@@ -29,9 +29,22 @@ func TestTest(t *testing.T) {
 
 func TestUid(t *testing.T) {
 	u := generateUid()
-	s := u.String()
-	fmt.Println(len(s), s)
-	u = UidOf(s)
-	s = u.String()
-	fmt.Println(s)
+	u1 := generateUid()
+
+	fmt.Println(u.String())
+	fmt.Println(u1.String())
+}
+
+func BenchmarkUid(b *testing.B) {
+	var u UID
+	b.Run("generate", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			u = generateUid()
+		}
+	})
+	b.Run("string", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = u.String()
+		}
+	})
 }

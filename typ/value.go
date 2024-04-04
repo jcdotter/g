@@ -16,8 +16,10 @@ package typ
 
 import (
 	"crypto/rand"
+	"encoding/hex"
 	"reflect"
 	"strconv"
+	"time"
 	"unsafe"
 )
 
@@ -475,7 +477,7 @@ func (b Binary) String() string {
 
 type UID [16]byte
 
-// Uid returns a new random UUID
+// Uid returns a new version4 UUID
 func Uid() UID {
 	return generateUid()
 }
@@ -530,9 +532,7 @@ func parseHexByte(s string) byte {
 }
 
 func generateUid() (uid UID) {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	copy(uid[:], b)
+	rand.Read(uid[:])
 	uid[6] = (uid[6] & 0x0f) | 0x40
 	uid[8] = (uid[8] & 0x3f) | 0x80
 	return
@@ -543,18 +543,32 @@ func (u UID) Bytes() []byte {
 }
 
 func (u UID) String() string {
-	hex := make([]byte, 32)
-	for i, v := range u {
-		hex[i*2] = hexChar(v >> 4)
-		hex[i*2+1] = hexChar(v & 0x0f)
-	}
-	str := make([]byte, 0, 36)
-	return string(append(append(append(append(append(append(append(append(append(str, hex[:8]...), '-'), hex[8:12]...), '-'), hex[12:16]...), '-'), hex[16:20]...), '-'), hex[20:]...))
+	var buf [36]byte
+	encodeHex(buf[:], u)
+	return string(buf[:])
 }
 
-func hexChar(b byte) byte {
-	if b < 10 {
-		return '0' + b
-	}
-	return 'a' + b - 10
+func encodeHex(dst []byte, uuid UID) {
+	hex.Encode(dst, uuid[:4])
+	dst[8] = '-'
+	hex.Encode(dst[9:13], uuid[4:6])
+	dst[13] = '-'
+	hex.Encode(dst[14:18], uuid[6:8])
+	dst[18] = '-'
+	hex.Encode(dst[19:23], uuid[8:10])
+	dst[23] = '-'
+	hex.Encode(dst[24:], uuid[10:])
 }
+
+// ----------------------------------------------------------------------------
+// TIME
+
+const (
+	ISO8601N   = `2006-01-02 15:04:05.000000000`
+	ISO8601    = `2006-01-02 15:04:05.000`
+	SqlDate    = `2006-01-02T15:04:05Z`
+	TimeFormat = `2006-01-02 15:04:05`
+	DateFormat = `2006-01-02`
+)
+
+type Time struct{ time.Time }
