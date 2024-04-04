@@ -81,8 +81,8 @@ func (l *Logger) Build() *Logger {
 
 	// build clock
 	if l.config.LogTime {
-		l.clock = time.GetClock().Format(l.encoder.TimeFmt)
-		l.encoder.BufferBytes(l.encoder.TimeBuffer, l.clock.cache)
+		l.clock = time.Now().Format(l.encoder.TimeFmt)
+		l.encoder.BufferBytes(l.encoder.TimeBuffer, l.clock.Cache())
 	}
 
 	return l

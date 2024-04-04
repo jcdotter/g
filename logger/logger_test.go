@@ -60,7 +60,7 @@ func TestTime(t *testing.T) {
 	f := "2006-01-02 15:04:05.000"
 	l := New().TimeKey("time").TimeFmt(f).Build()
 	gt := test.New(t)
-	gt.Equal(`,"time":"`+l.clock.time.Format(f)+`"`, l.time().String())
+	gt.Equal(`,"time":"`+l.clock.Time.Format(f)+`"`, l.time().String())
 }
 
 func TestService(t *testing.T) {

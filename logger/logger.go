@@ -35,7 +35,7 @@ type Logger struct {
 	sync.Mutex
 	config  *Config     // logger configuration
 	writers []io.Writer // multiwriter to Logger ouput(s)
-	clock   *time.Clock // time clock
+	clock   *time.Time  // time clock
 	encoder *Encoder    // encoder for log components
 }
 

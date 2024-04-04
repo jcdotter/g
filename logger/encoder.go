@@ -218,10 +218,10 @@ func (l *Logger) level(ll Level) encoding {
 
 func (l *Logger) time() encoding {
 	if l.config.LogTime {
-		if l.clock.refresh() {
+		if l.clock.Refresh() {
 			l.encoder.TimeBuffer.Reset()
 			l.encoder.TimeBuffer.Write(l.encoder.TimeKeyBuffer.Bytes())
-			l.encoder.BufferBytes(l.encoder.TimeBuffer, l.clock.cache)
+			l.encoder.BufferBytes(l.encoder.TimeBuffer, l.clock.Cache())
 		}
 		return l.encoder.TimeBuffer.Bytes()
 	}
