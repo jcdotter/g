@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package logger
+package time
 
 import (
 	"math"
@@ -20,34 +20,34 @@ import (
 	"time"
 )
 
-type clock struct {
+type Clock struct {
 	sync.Mutex
 	time    time.Time
 	fmt     string
 	cache   []byte
 	nsecPos int
-	sCache  clockCache
-	nCache  clockCache
+	sCache  ClockCache
+	nCache  ClockCache
 }
 
-type clockCache struct {
+type ClockCache struct {
 	exp   int64
 	cache []byte
 	fmt   string
 }
 
-func Clock() *clock {
-	return &clock{time: time.Now().UTC()}
+func GetClock() *Clock {
+	return &Clock{time: time.Now().UTC()}
 }
 
-func (c *clock) Format(f string) *clock {
+func (c *Clock) Format(f string) *Clock {
 	c.fmt = f
 	c.sCache.fmt, c.nCache.fmt, c.nsecPos = parseFracSec(f)
 	c.refreshSec()
 	return c
 }
 
-func (c *clock) refresh() bool {
+func (c *Clock) refresh() bool {
 	c.Lock()
 	defer c.Unlock()
 	c.time = time.Now()
@@ -61,7 +61,7 @@ func (c *clock) refresh() bool {
 	return false
 }
 
-func (c *clock) refreshSec() {
+func (c *Clock) refreshSec() {
 	c.cache = []byte(c.time.Format(c.fmt))
 	e := c.nsecPos + len(c.nCache.fmt)
 	// update sec cache
@@ -72,41 +72,41 @@ func (c *clock) refreshSec() {
 	c.nCache.cache = c.cache[c.nsecPos:e]
 }
 
-func (c *clock) refreshNsec() {
+func (c *Clock) refreshNsec() {
 	c.nCache.exp = int64(c.time.Nanosecond()) + int64(math.Pow10(10-len(c.nCache.fmt)))
 	c.nCache.cache = []byte(c.time.Format(c.nCache.fmt))
 	c.cache = append(append(c.sCache.cache[:c.nsecPos], c.nCache.cache...), c.sCache.cache[c.nsecPos:]...)
 }
 
-func (c *clock) Unix() int64 {
+func (c *Clock) Unix() int64 {
 	return time.Now().UTC().Unix()
 }
 
-func (c *clock) UnixMilli() int64 {
+func (c *Clock) UnixMilli() int64 {
 	return time.Now().UTC().UnixMilli()
 }
 
-func (c *clock) UnixNano() int64 {
+func (c *Clock) UnixNano() int64 {
 	return time.Now().UTC().UnixNano()
 }
 
-func (c *clock) Sec() int64 {
+func (c *Clock) Sec() int64 {
 	return time.Now().UTC().Unix()
 }
 
-func (c *clock) Nanosecond() int64 {
+func (c *Clock) Nanosecond() int64 {
 	return int64(time.Now().UTC().Nanosecond())
 }
 
-func (c *clock) Millisecond() int64 {
+func (c *Clock) Millisecond() int64 {
 	return int64(time.Now().UTC().Nanosecond() / 1000000)
 }
 
-func (c *clock) Time() time.Time {
+func (c *Clock) Time() time.Time {
 	return time.Now().UTC()
 }
 
-func (c *clock) String() string {
+func (c *Clock) String() string {
 	c.refresh()
 	return string(c.cache)
 }

@@ -3,6 +3,7 @@ module github.com/jcdotter/go //v0.1.2
 go 1.21.2
 
 require (
+	github.com/google/uuid v1.4.0
 	golang.org/x/term v0.17.0
 	google.golang.org/grpc v1.61.1
 )

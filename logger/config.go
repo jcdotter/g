@@ -19,6 +19,7 @@ import (
 	"os"
 
 	"github.com/jcdotter/go/buffer"
+	"github.com/jcdotter/go/time"
 )
 
 var (
@@ -80,7 +81,7 @@ func (l *Logger) Build() *Logger {
 
 	// build clock
 	if l.config.LogTime {
-		l.clock = Clock().Format(l.encoder.TimeFmt)
+		l.clock = time.GetClock().Format(l.encoder.TimeFmt)
 		l.encoder.BufferBytes(l.encoder.TimeBuffer, l.clock.cache)
 	}
 

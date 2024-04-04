@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	"github.com/jcdotter/go/buffer"
+	"github.com/jcdotter/go/time"
 )
 
 //	TODO:
@@ -34,7 +35,7 @@ type Logger struct {
 	sync.Mutex
 	config  *Config     // logger configuration
 	writers []io.Writer // multiwriter to Logger ouput(s)
-	clock   *clock      // time clock
+	clock   *time.Clock // time clock
 	encoder *Encoder    // encoder for log components
 }
 
