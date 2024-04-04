@@ -221,7 +221,7 @@ func (l *Logger) time() encoding {
 		if l.clock.Refresh() {
 			l.encoder.TimeBuffer.Reset()
 			l.encoder.TimeBuffer.Write(l.encoder.TimeKeyBuffer.Bytes())
-			l.encoder.BufferBytes(l.encoder.TimeBuffer, l.clock.Cache())
+			l.encoder.BufferBytes(l.encoder.TimeBuffer, l.clock.Bytes())
 		}
 		return l.encoder.TimeBuffer.Bytes()
 	}

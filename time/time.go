@@ -61,20 +61,26 @@ func Parse(f string, t string) *Time {
 
 // Now returns a new Time
 func Now() *Time {
-	return &Time{Time: time.Now().UTC()}
+	return &Time{Time: time.Now().UTC(), fmt: TimeFormat}
 }
 
 // Date returns a new created time using the
 // provided year, month, and day
 func Date(y, m, d int) *Time {
-	return &Time{Time: time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC)}
+	return &Time{Time: time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC), fmt: DateFormat}
 }
 
 // Format resets the time format
 func (t *Time) Format(f string) *Time {
 	t.fmt = f
-	t.sCache.fmt, t.nCache.fmt, t.nsecPos = parseFracSec(f)
-	t.refreshSec()
+	t.format()
+	t.recache()
+	return t
+}
+
+// Now updates the time to the current time
+func (t *Time) Update() *Time {
+	t.Refresh()
 	return t
 }
 
@@ -84,14 +90,7 @@ func (t *Time) Refresh() bool {
 	t.Lock()
 	defer t.Unlock()
 	t.Time = time.Now()
-	if t.sCache.exp < t.Time.Unix() {
-		t.refreshSec()
-		return true
-	} else if t.nCache.exp < int64(t.Time.Nanosecond()) {
-		t.refreshNsec()
-		return true
-	}
-	return false
+	return t.Cache()
 }
 
 // Unix returns the time in seconds
@@ -112,31 +111,16 @@ func (t *Time) UnixNano() int64 {
 	return t.Time.UTC().UnixNano()
 }
 
-// Now updates the time to the current time
-func (t *Time) Now() *Time {
-	t.Refresh()
-	return t
-}
-
 // String returns the formatted time string
 func (t *Time) String() string {
+	t.Cache()
 	return string(t.cache)
 }
 
 // Bytes returns the formatted time string
 func (t *Time) Bytes() []byte {
+	t.Cache()
 	return t.cache
-}
-
-// Cache returns the formatted time string
-func (t *Time) Cache() []byte {
-	return t.cache
-}
-
-// AddDate returns the time with the added
-// year, month, and day
-func (t *Time) AddDate(y, m, d int) *Time {
-	return &Time{Time: t.Time.AddDate(y, m, d), fmt: t.fmt}
 }
 
 // DaysSince returns the number of Days since lt until time t
@@ -160,6 +144,12 @@ func (t *Time) DaysInMonth() int {
 	return Date(t.Year(), int(t.Month()), 0).AddDate(0, 1, 0).Day()
 }
 
+// AddDate returns the time with the added
+// year, month, and day as a new Time instance
+func (t *Time) AddDate(y, m, d int) *Time {
+	return &Time{Time: t.Time.AddDate(y, m, d), fmt: t.fmt}
+}
+
 // MonthStart returns the first date of the month for time 't'
 func (t *Time) MonthStart() *Time {
 	return Date(t.Year(), int(t.Month()), 1)
@@ -167,14 +157,18 @@ func (t *Time) MonthStart() *Time {
 
 // MonthEnd returns the last nanosecond of the month for time 't'
 func (t *Time) MonthEnd() *Time {
-	return &Time{Time: t.MonthStart().AddDate(0, 1, 0).Add(-1 * time.Nanosecond)}
+	return &Time{
+		Time: time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0).Add(-1 * time.Nanosecond),
+		fmt:  t.fmt,
+	}
 }
 
 // QuarterStart returns the first date of the quarter
 // for time 't' with year ending in month 'ye'
 func (t *Time) QuarterStart(ye int) *Time {
+	// pickup here
 	ye = ye % 3
-	ye = (3-((int(t.Month())-ye)%3))%3 - 2
+	ye = (3-((int(t.Month())-(ye%3))%3))%3 - 2
 	return t.AddDate(0, ye, 0).MonthStart()
 }
 
@@ -216,7 +210,24 @@ func (t *Time) IsHoliday() (Holiday, bool) {
 // ----------------------------------------------------------------------------
 // HELPS
 
-func (t *Time) refreshSec() {
+// format sets the time cache formats
+func (t *Time) format() *Time {
+	t.sCache.fmt, t.nCache.fmt, t.nsecPos = parseFracSec(t.fmt)
+	return t
+}
+
+func (t *Time) Cache() bool {
+	if t.sCache.exp < t.Time.Unix() {
+		t.recache()
+		return true
+	} else if t.nCache.exp < int64(t.Time.Nanosecond()) {
+		t.recacheN()
+		return true
+	}
+	return false
+}
+
+func (t *Time) recache() {
 	t.cache = []byte(t.Time.Format(t.fmt))
 	e := t.nsecPos + len(t.nCache.fmt)
 	// update sec cache
@@ -227,7 +238,7 @@ func (t *Time) refreshSec() {
 	t.nCache.cache = t.cache[t.nsecPos:e]
 }
 
-func (t *Time) refreshNsec() {
+func (t *Time) recacheN() {
 	t.nCache.exp = int64(t.Time.Nanosecond()) + int64(math.Pow10(10-len(t.nCache.fmt)))
 	t.nCache.cache = []byte(t.Time.Format(t.nCache.fmt))
 	t.cache = append(append(t.sCache.cache[:t.nsecPos], t.nCache.cache...), t.sCache.cache[t.nsecPos:]...)
