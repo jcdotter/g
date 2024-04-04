@@ -150,38 +150,47 @@ func (t *Time) AddDate(y, m, d int) *Time {
 	return &Time{Time: t.Time.AddDate(y, m, d), fmt: t.fmt}
 }
 
-// MonthStart returns the first date of the month for time 't'
+// MonthStart returns the first date of
+// the month for time 't' as a new Time instance
 func (t *Time) MonthStart() *Time {
 	return Date(t.Year(), int(t.Month()), 1)
 }
 
-// MonthEnd returns the last nanosecond of the month for time 't'
+// MonthEnd returns the last nanosecond of
+// the month for time 't' as a new Time instance
 func (t *Time) MonthEnd() *Time {
 	return &Time{
-		Time: time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0).Add(-1 * time.Nanosecond),
-		fmt:  t.fmt,
+		Time: time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC).
+			AddDate(0, 1, 0).
+			Add(-1 * time.Nanosecond),
+		fmt: t.fmt,
 	}
 }
 
 // QuarterStart returns the first date of the quarter
 // for time 't' with year ending in month 'ye'
+// as a new Time instance
 func (t *Time) QuarterStart(ye int) *Time {
-	// pickup here
-	ye = ye % 3
-	ye = (3-((int(t.Month())-(ye%3))%3))%3 - 2
-	return t.AddDate(0, ye, 0).MonthStart()
+	m := t.Time.AddDate(0, QuarterEndMonth(ye, int(t.Month()))-2, 0)
+	return Date(m.Year(), int(m.Month()), 1)
 }
 
 // QuarterEnd returns the last nanosecond of the quarter
 // for time 't' with year ending in month 'ye'
+// as a new Time instance
 func (t *Time) QuarterEnd(ye int) *Time {
-	ye = ye % 3
-	ye = (3 - ((int(t.Month()) - ye) % 3)) % 3
-	return t.AddDate(0, ye, 0).MonthEnd()
+	m := t.Time.AddDate(0, QuarterEndMonth(ye, int(t.Month())), 0)
+	return &Time{
+		Time: time.Date(m.Year(), m.Month(), 1, 0, 0, 0, 0, time.UTC).
+			AddDate(0, 1, 0).
+			Add(-1 * time.Nanosecond),
+		fmt: t.fmt,
+	}
 }
 
 // YearStart returns the first date of the year
 // for time 't' with year ending in month 'ye'
+// as a new Time instance
 func (t *Time) YearStart(ye int) *Time {
 	var y int
 	if int(t.Month()) < ye+1 {
@@ -192,13 +201,14 @@ func (t *Time) YearStart(ye int) *Time {
 
 // YearEnd returns the last nanosecond of the year
 // for time 't' with year ending in month 'ye'
+// as a new Time instance
 func (t *Time) YearEnd(ye int) *Time {
 	return &Time{Time: t.YearStart(ye).Time.AddDate(0, 12, 0).Add(-1 * time.Nanosecond), fmt: t.fmt}
 }
 
 func (t *Time) IsHoliday() (Holiday, bool) {
 	y, m, d := t.Year(), t.Month(), t.Day()
-	for _, i := range GetUsHolidays().List {
+	for _, i := range UsHolidays {
 		h := i.Date(y)
 		if m == h.Month() && d == h.Day() {
 			return i, true
@@ -276,4 +286,10 @@ func parseFracSec(f string) (fmt, nFmt string, nPos int) {
 		}
 	}
 	return
+}
+
+// QuarterEndMonth returns the month the quarter ends
+// for month 'm' when year ends in month 'ye'
+func QuarterEndMonth(ye, m int) int {
+	return (3 - ((m - (ye % 3)) % 3)) % 3
 }
