@@ -53,7 +53,7 @@ const (
 	ERROR                   // alias for interface{Error() string}
 	ELIPS                   // alias for ...
 	TYPE                    // alias for Type
-	BINARY                  // alias for []byte
+	BINARY                  // alias for []byte, []rune
 	TIME                    // alias for struct{uint64, int64, uintptr}
 	UUID                    // alias for [16]byte
 )

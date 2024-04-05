@@ -21,21 +21,14 @@ import (
 	"unsafe"
 )
 
-// ------------------------------------------------------------ /
+// ----------------------------------------------------------------------------
 // Type IMPLEMENTATION
 // custom implementation of golang source code: reflect.Type
 // with expanded functionality
 
 var (
-	__ttime       = (any)(time.Time{})
-	__timefields  = (*structType)(unsafe.Pointer((*Iface)(unsafe.Pointer(&__ttime)).Type)).fields
-	__timefield0b = __timefields[0].name.bytes
-	__timefield0t = __timefields[0].typ
-	__timefield1b = __timefields[1].name.bytes
-	__timefield1t = __timefields[1].typ
-	__timefield2b = __timefields[2].name.bytes
-	__timefield2t = __timefields[2].typ
-	errorType     = reflect.TypeOf((*error)(nil)).Elem()
+	errorType = reflect.TypeOf((*error)(nil)).Elem()
+	typeType  = TypeOf(Type{})
 )
 
 type Type struct {
@@ -135,15 +128,11 @@ func (t *Type) KindX() byte {
 			return UUID
 		}
 	case STRUCT: // check if time
-		fs := (*structType)(unsafe.Pointer(t)).fields
-		if len(fs) == 3 {
-			if fs[0].name.bytes != __timefield0b || fs[0].typ != __timefield0t ||
-				fs[1].name.bytes != __timefield1b || fs[1].typ != __timefield1t ||
-				fs[2].name.bytes != __timefield2b || fs[2].typ != __timefield2t {
-				return STRUCT
-			} else {
-				return TIME
-			}
+		switch {
+		case t.IsTime():
+			return TIME
+		case t == typeType:
+			return TYPE
 		}
 	}
 	return k
@@ -254,11 +243,10 @@ func (t *Type) InTypes(types ...*Type) bool {
 	return false
 }
 
-// ------------------------------------------------------------ /
-// STURCTURED TypeS
+// ----------------------------------------------------------------------------
+// STURCTURED TYPES
 // implementation of golang types for data structures:
 // array, map, ptr, slice, string, struct, field, interface
-// ------------------------------------------------------------ /
 
 type arrayType struct {
 	Type
@@ -365,10 +353,9 @@ type Imethod struct {
 	_ typeOff
 }
 
-// ------------------------------------------------------------ /
-// STRUCT Type IMPLEMENTATION
+// ----------------------------------------------------------------------------
+// STRUCT TYPE IMPLEMENTATION
 // custom implementation of golang struct type
-// ------------------------------------------------------------ /
 
 // IsStruct returns true if the Type is a struct
 func (t *Type) IsStruct() bool {
@@ -526,10 +513,9 @@ func StructTypeMatch(x, y *Type, ancestry ...*Type) bool {
 	return false
 }
 
-// ------------------------------------------------------------ /
-// FIELD Type IMPLEMENTATION
+// ----------------------------------------------------------------------------
+// FIELD TYPE IMPLEMENTATION
 // custom implementation of golang struct field type
-// ------------------------------------------------------------ /
 
 func (f *FieldType) Type() *Type {
 	return f.typ
@@ -559,10 +545,9 @@ func (f *FieldType) Offset() uintptr {
 	return f.offset
 }
 
-// ------------------------------------------------------------ /
+// ----------------------------------------------------------------------------
 // FUNC Type IMPLEMENTATION
 // custom implementation of golang func type
-// ------------------------------------------------------------ /
 
 // IsFunc returns true if the Type is a func
 func (t *Type) IsFunc() bool {
@@ -614,11 +599,10 @@ func (t *funcType) out() []*Type {
 	return (*[1 << 20]*Type)(add(unsafe.Pointer(t), uadd))[t.inCount : t.inCount+outCount : t.inCount+outCount]
 }
 
-// ------------------------------------------------------------ /
-// NAME IMPLEMENTATION
-// custom implementation of golang source code: name
-// with expanded functionality
-// ------------------------------------------------------------ /
+// ----------------------------------------------------------------------------
+// NAME
+// custom implementation of golang source code:
+// reflact.name with expanded functionality
 
 type name struct {
 	bytes *byte
@@ -735,4 +719,34 @@ func (n name) parseTagValueAt(tag string, at int) (value string, end int) {
 		return
 	}
 	return "", at
+}
+
+// ----------------------------------------------------------------------------
+// TIME TYPE
+
+var (
+	__ttime       = (any)(time.Time{})
+	__timefields  = (*structType)(unsafe.Pointer((*Iface)(unsafe.Pointer(&__ttime)).Type)).fields
+	__timefield0b = __timefields[0].name.bytes
+	__timefield0t = __timefields[0].typ
+	__timefield1b = __timefields[1].name.bytes
+	__timefield1t = __timefields[1].typ
+	__timefield2b = __timefields[2].name.bytes
+	__timefield2t = __timefields[2].typ
+)
+
+func (t *Type) IsTime() (is bool) {
+	if t.kind&kindMask == STRUCT {
+		if fs := (*structType)(unsafe.Pointer(t)).fields; len(fs) == 3 {
+			if fs[0].name.bytes != __timefield0b || fs[0].typ != __timefield0t ||
+				fs[1].name.bytes != __timefield1b || fs[1].typ != __timefield1t ||
+				fs[2].name.bytes != __timefield2b || fs[2].typ != __timefield2t {
+				return
+			}
+			return true
+		} else if len(fs) == 7 && fs[0].typ.IsTime() {
+			return true
+		}
+	}
+	return
 }

@@ -15,11 +15,8 @@
 package typ
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"reflect"
 	"strconv"
-	"time"
 	"unsafe"
 )
 
@@ -55,12 +52,17 @@ func (v Value) Iface() Iface {
 
 // Type returns the type of the value
 func (v Value) Type() *Type {
-	return v.Iface().Type
+	return (*(*Iface)(unsafe.Pointer(&v.Value))).Type
 }
 
 // Pointer returns the pointer to the value
 func (v Value) Pointer() unsafe.Pointer {
-	return v.Iface().Pointer
+	return (*(*Iface)(unsafe.Pointer(&v.Value))).Pointer
+}
+
+// Uintptr returns the value as a uintptr
+func (v Value) Uintptr() uintptr {
+	return v.Value.Pointer()
 }
 
 // Elem returns the value that the pointer points to
@@ -77,6 +79,23 @@ func (v Value) Kind() byte {
 // to include aliases and special types
 func (v Value) KindX() byte {
 	return v.Type().KindX()
+}
+
+// SetType sets the actual data type of interface Value
+func (v Value) SetType() Value {
+	if v.Kind() == INTERFACE {
+		var e *Value
+		if (*interfaceType)(unsafe.Pointer(v.Type())).NumMethod() != 0 {
+			e = (*Value)(unsafe.Pointer((*interface{ M() })(v.Pointer())))
+		} else {
+			e = (*Value)(v.Pointer())
+		}
+		if e.Type() != nil && e.Type().kind != 0 {
+			i := Iface{e.Type(), e.Pointer(), e.Type().flag()}
+			return Value{*(*reflect.Value)(unsafe.Pointer(&i))}
+		}
+	}
+	return v
 }
 
 // Slice returns a slice type converter
@@ -97,7 +116,7 @@ func (v Value) Slice() (s Slice) {
 // Map returns a map type converter
 // for the given map. Panics if the given
 // value is not a map.
-func (v Value) Map() (m hmap) {
+func (v Value) Map() (m Map) {
 	switch v.Kind() {
 	case MAP:
 		m.Value = v
@@ -122,6 +141,35 @@ func (v Value) Struct() (s Struct) {
 		panic("typ.Value.Struct: not a struct")
 	}
 	return
+}
+
+// Binary returns a binary type converter
+func (v Value) Binary() Binary {
+	switch v.Kind() {
+	case STRING:
+		return Binary(v.String())
+	case SLICE:
+		switch v.Type().Elem().Kind() {
+		case UINT8:
+			return Binary(string(v.Value.Bytes()))
+		case INT32:
+			return *(*Binary)(v.Pointer())
+		}
+	}
+	panic("typ.Value.Binary: not a string or byte slice")
+}
+
+// Bytes returns the value as a byte slice
+func (v Value) Bytes() []byte {
+	switch v.Kind() {
+	case STRING:
+		return []byte(v.String())
+	case SLICE:
+		if v.Type().Elem().Kind() == UINT8 {
+			return v.Value.Bytes()
+		}
+	}
+	panic("typ.Value.Bytes: not a string or byte slice")
 }
 
 // ----------------------------------------------------------------------------
@@ -225,18 +273,18 @@ func (s Slice) Scan(dest any) {
 // MAP
 
 // map is a type converter for maps
-type hmap struct{ Value }
+type Map struct{ Value }
 
 // Map returns a map type converter
 // for the given map. Panics if the given
 // value is not a map.
-func Map(hmap any) (m hmap) {
+func MapOf(hmap any) (m Map) {
 	return ValueOf(hmap).Map()
 }
 
 // ForEach iterates over the map and calls
 // the given function for each element.
-func (m hmap) ForEach(fn func(k, v Value) (brake bool)) {
+func (m Map) ForEach(fn func(k, v Value) (brake bool)) {
 	iter := m.MapRange()
 	for iter.Next() {
 		if fn(FromReflectValue(iter.Key()), FromReflectValue(iter.Value())) {
@@ -246,7 +294,7 @@ func (m hmap) ForEach(fn func(k, v Value) (brake bool)) {
 }
 
 // Keys returns the keys of the map
-func (m hmap) Keys() []string {
+func (m Map) Keys() []string {
 	keys := make([]string, m.Len())
 	iter := m.MapRange()
 	for i := 0; iter.Next(); i++ {
@@ -256,7 +304,7 @@ func (m hmap) Keys() []string {
 }
 
 // Slice converts the map to a slice
-func (m hmap) Values() []any {
+func (m Map) Values() []any {
 	slice := make([]any, m.Len())
 	iter := m.MapRange()
 	for i := 0; iter.Next(); i++ {
@@ -266,7 +314,7 @@ func (m hmap) Values() []any {
 }
 
 // Map converts the map to a map
-func (m hmap) Map() map[string]any {
+func (m Map) Map() map[string]any {
 	hmap := make(map[string]any, m.Len())
 	m.ForEach(func(k, v Value) (brake bool) {
 		hmap[k.String()] = v.Interface()
@@ -277,7 +325,7 @@ func (m hmap) Map() map[string]any {
 
 // Scan reads the value from the Map into the given
 // dest pointer to an Array, Slice, Map, or Struct
-func (m hmap) Scan(dest any, tag ...string) {
+func (m Map) Scan(dest any, tag ...string) {
 	v := prepScanDest(m.Value, dest)
 	switch v.Kind() {
 	case ARRAY, SLICE:
@@ -471,104 +519,3 @@ func (b Binary) Bytes() []byte {
 func (b Binary) String() string {
 	return string(b)
 }
-
-// ----------------------------------------------------------------------------
-// UUID
-
-type UID [16]byte
-
-// Uid returns a new version4 UUID
-func Uid() UID {
-	return generateUid()
-}
-
-// UUID returns a UUID type converter
-func UidOf(uuid any) UID {
-	switch u := uuid.(type) {
-	case UID:
-		return u
-	case [16]byte:
-		return u
-	case []byte:
-		return parseUidBytes(u)
-	case string:
-		return parseUidString(u)
-	}
-	panic("typ.UUIDOf: not a UUID")
-}
-
-func parseUidBytes(b []byte) (uid UID) {
-	if len(b) != 16 {
-		panic("typ.parseUuidBytes: invalid length")
-	}
-	copy(uid[:], b)
-	return
-}
-
-func parseUidString(s string) (uid UID) {
-	switch len(s) {
-	case 32:
-		for i := 0; i < 16; i++ {
-			uid[i] = parseHexByte(s[i*2 : i*2+2])
-		}
-		return
-	case 36:
-		for i, j := 0, 0; i < 36; i++ {
-			if s[i] == '-' {
-				continue
-			}
-			uid[j] = parseHexByte(s[i : i+2])
-			j++
-			i++
-		}
-		return
-	}
-	panic("typ.parseUuidString: invalid length")
-}
-
-func parseHexByte(s string) byte {
-	b, _ := strconv.ParseUint(s, 16, 8)
-	return byte(b)
-}
-
-func generateUid() (uid UID) {
-	rand.Read(uid[:])
-	uid[6] = (uid[6] & 0x0f) | 0x40
-	uid[8] = (uid[8] & 0x3f) | 0x80
-	return
-}
-
-func (u UID) Bytes() []byte {
-	return u[:]
-}
-
-func (u UID) String() string {
-	var buf [36]byte
-	encodeHex(buf[:], u)
-	return string(buf[:])
-}
-
-func encodeHex(dst []byte, uuid UID) {
-	hex.Encode(dst, uuid[:4])
-	dst[8] = '-'
-	hex.Encode(dst[9:13], uuid[4:6])
-	dst[13] = '-'
-	hex.Encode(dst[14:18], uuid[6:8])
-	dst[18] = '-'
-	hex.Encode(dst[19:23], uuid[8:10])
-	dst[23] = '-'
-	hex.Encode(dst[24:], uuid[10:])
-}
-
-// ----------------------------------------------------------------------------
-// TIME
-
-const (
-	ISO8601N   = `2006-01-02 15:04:05.000000000`
-	ISO8601    = `2006-01-02 15:04:05.000`
-	SqlDate    = `2006-01-02T15:04:05Z`
-	TimeFormat = `2006-01-02 15:04:05`
-	DateFormat = `2006-01-02`
-)
-
-type Time struct{ time.Time }

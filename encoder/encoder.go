@@ -10,10 +10,12 @@ import (
 	"math"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 	"unsafe"
 
 	t "github.com/jcdotter/go/typ"
+	"github.com/jcdotter/go/uuid"
 )
 
 // ------------------------------------------------------------ /
@@ -95,7 +97,7 @@ type InlineSyntax struct {
 }
 
 type ancestor struct {
-	typ     t.Type
+	typ     *t.Type
 	pointer uintptr
 }
 
@@ -372,11 +374,13 @@ func (m *Marshaler) marshal(v t.Value, ancestry ...ancestor) {
 	case t.TIME:
 		m.marshalTime(*(*time.Time)(v.Pointer()))
 	case t.UUID:
-		m.marshalUuid(*(*[16]byte)(v.Pointer()))
+		m.marshalUuid(*(*uuid.UUID)(v.Pointer()))
 	case t.BINARY:
-		m.marshalBytes(*(*[]byte)(v.Pointer()))
+		m.marshalString(v.Binary().String())
+	case t.TYPE:
+		m.marshalString((*t.Type)(v.Pointer()).String())
 	default:
-		panic("cannot marshal type '" + v.typ.String() + "'")
+		panic("cannot marshal type '" + v.Type().String() + "'")
 	}
 }
 
@@ -398,37 +402,37 @@ func (m *Marshaler) marshalNum(v t.Value) {
 	var bytes []byte
 	switch v.Kind() {
 	case t.INT:
-		bytes = []byte(strconv.FormatInt(*(*int64)(v.ptr), 10))
+		bytes = []byte(strconv.FormatInt(*(*int64)(v.Pointer()), 10))
 	case t.INT8:
-		bytes = []byte(strconv.FormatInt(int64(*(*int8)(v.ptr)), 10))
+		bytes = []byte(strconv.FormatInt(int64(*(*int8)(v.Pointer())), 10))
 	case t.INT16:
-		bytes = []byte(strconv.FormatInt(int64(*(*int16)(v.ptr)), 10))
+		bytes = []byte(strconv.FormatInt(int64(*(*int16)(v.Pointer())), 10))
 	case t.INT32:
-		bytes = []byte(strconv.FormatInt(int64(*(*int32)(v.ptr)), 10))
+		bytes = []byte(strconv.FormatInt(int64(*(*int32)(v.Pointer())), 10))
 	case t.INT64:
-		bytes = []byte(strconv.FormatInt(*(*int64)(v.ptr), 10))
+		bytes = []byte(strconv.FormatInt(*(*int64)(v.Pointer()), 10))
 	case t.UINT:
-		bytes = []byte(strconv.FormatUint(*(*uint64)(v.ptr), 10))
+		bytes = []byte(strconv.FormatUint(*(*uint64)(v.Pointer()), 10))
 	case t.UINT8:
-		bytes = []byte(strconv.FormatUint(uint64(*(*uint8)(v.ptr)), 10))
+		bytes = []byte(strconv.FormatUint(uint64(*(*uint8)(v.Pointer())), 10))
 	case t.UINT16:
-		bytes = []byte(strconv.FormatUint(uint64(*(*uint16)(v.ptr)), 10))
+		bytes = []byte(strconv.FormatUint(uint64(*(*uint16)(v.Pointer())), 10))
 	case t.UINT32:
-		bytes = []byte(strconv.FormatUint(uint64(*(*uint32)(v.ptr)), 10))
+		bytes = []byte(strconv.FormatUint(uint64(*(*uint32)(v.Pointer())), 10))
 	case t.UINT64:
-		bytes = []byte(strconv.FormatUint(*(*uint64)(v.ptr), 10))
+		bytes = []byte(strconv.FormatUint(*(*uint64)(v.Pointer()), 10))
 	case t.UINTPTR:
-		bytes = []byte(strconv.FormatUint(*(*uint64)(v.ptr), 10))
+		bytes = []byte(strconv.FormatUint(*(*uint64)(v.Pointer()), 10))
 	case t.FLOAT32:
-		bytes = []byte(strconv.FormatFloat(float64(*(*float32)(v.ptr)), 'f', -1, 64))
+		bytes = []byte(strconv.FormatFloat(float64(*(*float32)(v.Pointer())), 'f', -1, 64))
 	case t.FLOAT64:
-		bytes = []byte(strconv.FormatFloat(*(*float64)(v.ptr), 'f', -1, 64))
+		bytes = []byte(strconv.FormatFloat(*(*float64)(v.Pointer()), 'f', -1, 64))
 	case t.COMPLEX64:
-		bytes = []byte(strconv.FormatComplex(complex128(*(*complex64)(v.ptr)), 'f', -1, 128))
+		bytes = []byte(strconv.FormatComplex(complex128(*(*complex64)(v.Pointer())), 'f', -1, 128))
 	case t.COMPLEX128:
-		bytes = []byte(strconv.FormatComplex(*(*complex128)(v.ptr), 'f', -1, 128))
+		bytes = []byte(strconv.FormatComplex(*(*complex128)(v.Pointer()), 'f', -1, 128))
 	default:
-		panic("cannot marshal type '" + v.typ.String() + "'")
+		panic("cannot marshal type '" + v.Type().String() + "'")
 	}
 	if m.QuotedNum {
 		m.SetBuffer(append(append(append(m.buffer, m.quote), bytes...), m.quote))
@@ -437,60 +441,60 @@ func (m *Marshaler) marshalNum(v t.Value) {
 	m.bufferBytes(bytes)
 }
 
-func (m *Marshaler) marshalArray(a ARRAY, ancestry ...ancestor) {
+func (m *Marshaler) marshalArray(a t.Slice, ancestry ...ancestor) {
 	if a.Len() == 0 {
 		m.marshalEmptySlice()
 		return
 	}
-	delim, end, ancestry := m.marshalSliceStart((VALUE)(a), ancestry)
+	delim, end, ancestry := m.marshalSliceStart(a.Value, ancestry)
 	var j int
-	a.ForEach(func(i int, k string, v VALUE) (brake bool) {
+	a.ForEach(func(i int, v t.Value) (brake bool) {
 		j = m.marshalElem(j, delim, nil, v, ancestry)
 		return
 	})
 	m.marshalEnd(end)
 }
 
-func (m *Marshaler) marshalFunc(v VALUE) {
-	m.bufferBytes([]byte(v.typ.Name()))
+func (m *Marshaler) marshalFunc(v t.Value) {
+	m.bufferBytes([]byte(v.Type().Name()))
 }
 
-func (m *Marshaler) marshalInterface(v VALUE, ancestry ...ancestor) {
+func (m *Marshaler) marshalInterface(v t.Value, ancestry ...ancestor) {
 	v = v.SetType()
-	if v.Kind() != Interface {
+	if v.Kind() != t.INTERFACE {
 		m.marshal(v, ancestry...)
 		return
 	}
 	m.marshalString(fmt.Sprint(v.Interface()))
 }
 
-func (m *Marshaler) marshalPointer(v VALUE, ancestry ...ancestor) {
-	ancestry = append([]ancestor{{v.typ, v.Uintptr()}}, ancestry...)
+func (m *Marshaler) marshalPointer(v t.Value, ancestry ...ancestor) {
+	ancestry = append([]ancestor{{v.Type(), v.Uintptr()}}, ancestry...)
 	m.marshal(v.Elem(), ancestry...)
 }
 
-func (m *Marshaler) marshalMap(hm MAP, ancestry ...ancestor) {
+func (m *Marshaler) marshalMap(hm t.Map, ancestry ...ancestor) {
 	if hm.Len() == 0 {
 		m.marshalEmptyMap()
 		return
 	}
-	delim, end, ancestry := m.marshalMapStart((VALUE)(hm), ancestry)
+	delim, end, ancestry := m.marshalMapStart(hm.Value, ancestry)
 	var j int
-	hm.ForEach(func(i int, k string, v VALUE) (brake bool) {
-		j = m.marshalElem(j, delim, []byte(k), v, ancestry)
+	hm.ForEach(func(k, v t.Value) (brake bool) {
+		j = m.marshalElem(j, delim, k.Bytes(), v, ancestry)
 		return
 	})
 	m.marshalEnd(end)
 }
 
-func (m *Marshaler) marshalSlice(s SLICE, ancestry ...ancestor) {
+func (m *Marshaler) marshalSlice(s t.Slice, ancestry ...ancestor) {
 	if s.Len() == 0 {
 		m.marshalEmptySlice()
 		return
 	}
-	delim, end, ancestry := m.marshalSliceStart((VALUE)(s), ancestry)
+	delim, end, ancestry := m.marshalSliceStart(s.Value, ancestry)
 	var j int
-	s.ForEach(func(i int, k string, v VALUE) (brake bool) {
+	s.ForEach(func(i int, v t.Value) (brake bool) {
 		j = m.marshalElem(j, delim, nil, v, ancestry)
 		return
 	})
@@ -506,13 +510,13 @@ func (m *Marshaler) marshalString(s string) {
 		}
 	}
 	if quoted {
-		m.SetBuffer(append(append(append(m.buffer, m.quote), BYTES(b).Escaped(m.quote, m.escape)...), m.quote))
+		m.SetBuffer(append(append(append(m.buffer, m.quote), EscapeBytes(b, m.quote, m.escape)...), m.quote))
 		return
 	}
 	m.bufferBytes(b)
 }
 
-func (m *Marshaler) marshalStruct(s STRUCT, ancestry ...ancestor) {
+func (m *Marshaler) marshalStruct(s t.Struct, ancestry ...ancestor) {
 	if m.marshaltStructByMethod(s) {
 		return
 	}
@@ -520,12 +524,14 @@ func (m *Marshaler) marshalStruct(s STRUCT, ancestry ...ancestor) {
 		m.marshalEmptyMap()
 		return
 	}
-	delim, end, ancestry := m.marshalMapStart((VALUE)(s), ancestry)
+	delim, end, ancestry := m.marshalMapStart(s.Value, ancestry)
 	m.marshalStructTag(s)
-	j, has, keys := 0, m.hasTag[s.typ], m.tagKeys[s.typ]
-	s.ForEach(func(i int, k string, v VALUE) (brake bool) {
+	j, k, has, keys := 0, "", m.hasTag[s.Type()], m.tagKeys[s.Type()]
+	s.ForEach(func(i int, f *t.FieldType, v t.Value) (brake bool) {
 		if has {
 			k = keys[i]
+		} else {
+			k = f.Name()
 		}
 		j = m.marshalElem(j, delim, []byte(k), v, ancestry)
 		return
@@ -533,35 +539,31 @@ func (m *Marshaler) marshalStruct(s STRUCT, ancestry ...ancestor) {
 	m.marshalEnd(end)
 }
 
-func (m *Marshaler) marshaltStructByMethod(s STRUCT) bool {
-	if s.typ == TypeOf(TYPE{}) {
-		m.marshalString((*TYPE)(s.ptr).Name())
-		return true
-	}
+func (m *Marshaler) marshaltStructByMethod(s t.Struct) bool {
 	if !m.MarshalMethods {
 		return false
 	}
 	if m.methods != nil {
-		if index, ok := m.methods[s.typ]; ok {
+		if index, ok := m.methods[s.Type()]; ok {
 			if index != -1 {
-				m.bufferBytes([]byte((VALUE)(s).Reflect().Method(index).Call(nil)[0].String()))
+				m.bufferBytes([]byte(s.Method(index).Call(nil)[0].String()))
 				return true
 			}
 			return false
 		}
 	} else {
-		m.methods = map[*TYPE]int{s.typ: -1}
+		m.methods = map[*t.Type]int{s.Type(): -1}
 	}
-	n := STRING(m.Type[:1]).ToUpper() + m.Type[1:]
+	n := strings.ToUpper(m.Type[:1]) + m.Type[1:]
 	methods := []string{n, "Marshal" + n}
 	for _, name := range methods {
-		meth, exists := s.typ.Reflect().MethodByName(name)
+		meth, exists := s.Type().Reflect().MethodByName(name)
 		if exists {
 			in, out := meth.Type.NumIn(), meth.Type.NumOut()
 			if in == 1 && out > 0 {
-				if k := FromReflectType(meth.Type.Out(0)).KIND(); k == String || k == Bytes {
-					m.methods[s.typ] = meth.Index
-					m.bufferBytes([]byte((VALUE)(s).Reflect().Method(meth.Index).Call(nil)[0].String()))
+				if k := t.FromReflectType(meth.Type.Out(0)).KindX(); k == t.STRING || k == t.BINARY {
+					m.methods[s.Type()] = meth.Index
+					m.bufferBytes([]byte(s.Reflect().Method(meth.Index).Call(nil)[0].String()))
 					return true
 				}
 			}
@@ -570,13 +572,13 @@ func (m *Marshaler) marshaltStructByMethod(s STRUCT) bool {
 	return false
 }
 
-func (m *Marshaler) marshalStructTag(s STRUCT) {
+func (m *Marshaler) marshalStructTag(s t.Struct) {
 	if m.hasTag == nil {
-		vals, has := s.typ.TagValues(m.Type)
-		m.hasTag = map[*TYPE]bool{s.typ: has}
-		m.tagKeys = map[*TYPE][]string{s.typ: vals}
-	} else if _, ok := m.hasTag[s.typ]; !ok {
-		m.tagKeys[s.typ], m.hasTag[s.typ] = s.typ.TagValues(m.Type)
+		vals, has := s.Type().TagValues(m.Type)
+		m.hasTag = map[*t.Type]bool{s.Type(): has}
+		m.tagKeys = map[*t.Type][]string{s.Type(): vals}
+	} else if _, ok := m.hasTag[s.Type()]; !ok {
+		m.tagKeys[s.Type()], m.hasTag[s.Type()] = s.Type().TagValues(m.Type)
 	}
 }
 
@@ -588,15 +590,11 @@ func (m *Marshaler) marshalTime(t time.Time) {
 	m.marshalString(t.String())
 }
 
-func (m *Marshaler) marshalUuid(u [16]byte) {
+func (m *Marshaler) marshalUuid(u uuid.UUID) {
 	m.marshalString(u.String())
 }
 
-func (m *Marshaler) marshalBytes(b BYTES) {
-	m.marshalString(string(b))
-}
-
-func (m *Marshaler) marshalSliceComponents(v VALUE, ancestry []ancestor) (start []byte, delim []byte, end []byte) {
+func (m *Marshaler) marshalSliceComponents(v t.Value, ancestry []ancestor) (start []byte, delim []byte, end []byte) {
 	if !m.Format {
 		return m.SliceStart, m.ValEnd, m.SliceEnd
 	}
@@ -627,10 +625,10 @@ func (m *Marshaler) formattedSliceComponents(ancestry []ancestor) (start []byte,
 func (m *Marshaler) bracketlessSliceComponents(ancestry []ancestor) (start []byte, delim []byte, end []byte) {
 	in := bytes.Repeat(m.Indent, m.curIndent)
 	switch m.itemOf(ancestry) {
-	case Map:
+	case t.MAP:
 		start = append(append(append(m.LineBreak, in...), m.Indent...), m.SliceItem...)
 		delim = append(m.ValEnd, start...)
-	case Slice:
+	case t.SLICE:
 		start = m.SliceItem
 		delim = append(append(append(append(append(m.ValEnd, m.LineBreak...), in...), m.Indent...), m.Indent...), m.SliceItem...)
 	default:
@@ -640,7 +638,7 @@ func (m *Marshaler) bracketlessSliceComponents(ancestry []ancestor) (start []byt
 	return
 }
 
-func (m *Marshaler) marshalMapComponents(v VALUE, ancestry []ancestor) (start []byte, delim []byte, end []byte) {
+func (m *Marshaler) marshalMapComponents(v t.Value, ancestry []ancestor) (start []byte, delim []byte, end []byte) {
 	if !m.Format {
 		return m.MapStart, m.ValEnd, m.MapEnd
 	}
@@ -671,10 +669,10 @@ func (m *Marshaler) formattedMapComponents(ancestry []ancestor) (start []byte, d
 func (m *Marshaler) bracketlessMapComponents(ancestry []ancestor) (start []byte, delim []byte, end []byte) {
 	in := bytes.Repeat(m.Indent, m.curIndent)
 	switch m.itemOf(ancestry) {
-	case Map:
+	case t.MAP:
 		start = append(append(m.LineBreak, in...), m.Indent...)
 		delim = append(append(append(m.ValEnd, m.LineBreak...), in...), m.Indent...)
-	case Slice:
+	case t.SLICE:
 		delim = append(append(append(m.ValEnd, m.LineBreak...), in...), m.Indent...)
 	default:
 		delim = append(append(m.ValEnd, m.LineBreak...), in...)
@@ -682,25 +680,25 @@ func (m *Marshaler) bracketlessMapComponents(ancestry []ancestor) (start []byte,
 	return
 }
 
-func (m *Marshaler) itemOf(ancestry []ancestor) KIND {
+func (m *Marshaler) itemOf(ancestry []ancestor) byte {
 	k := m.marshalNonPtrParent(ancestry, 0)
-	if k == Map || k == Struct {
-		return Map
+	if k == t.MAP || k == t.STRUCT {
+		return t.MAP
 	}
-	if (k == Slice || k == Array) && m.SliceItem != nil {
-		return Slice
+	if (k == t.SLICE || k == t.ARRAY) && m.SliceItem != nil {
+		return t.SLICE
 	}
-	return Invalid
+	return t.INVALID
 }
 
-func (m *Marshaler) marshalNonPtrParent(ancestry []ancestor, pos int) KIND {
+func (m *Marshaler) marshalNonPtrParent(ancestry []ancestor, pos int) byte {
 	if len(ancestry) > pos {
-		if k := ancestry[pos].typ.Kind(); k != Pointer {
+		if k := ancestry[pos].typ.Kind(); k != t.POINTER {
 			return k
 		}
 		return m.marshalNonPtrParent(ancestry, pos+1)
 	}
-	return Invalid
+	return t.INVALID
 }
 
 func (m *Marshaler) marshalEmptySlice() {
@@ -719,21 +717,21 @@ func (m *Marshaler) marshalEmptyMap() {
 	m.SetBuffer(append(append(m.buffer, m.MapStart...), m.MapEnd...))
 }
 
-func (m *Marshaler) marshalSliceStart(v VALUE, a []ancestor) (delim []byte, end []byte, ancestry []ancestor) {
+func (m *Marshaler) marshalSliceStart(v t.Value, a []ancestor) (delim []byte, end []byte, ancestry []ancestor) {
 	start, delim, end := m.marshalSliceComponents(v, a)
 	m.bufferBytes(start)
 	m.IncDepth()
-	return delim, end, append([]ancestor{{v.typ, v.Uintptr()}}, a...)
+	return delim, end, append([]ancestor{{v.Type(), v.Uintptr()}}, a...)
 }
 
-func (m *Marshaler) marshalMapStart(v VALUE, a []ancestor) (delim []byte, end []byte, ancestry []ancestor) {
+func (m *Marshaler) marshalMapStart(v t.Value, a []ancestor) (delim []byte, end []byte, ancestry []ancestor) {
 	start, delim, end := m.marshalMapComponents(v, a)
 	m.bufferBytes(start)
 	m.IncDepth()
-	return delim, end, append([]ancestor{{v.typ, v.Uintptr()}}, a...)
+	return delim, end, append([]ancestor{{v.Type(), v.Uintptr()}}, a...)
 }
 
-func (m *Marshaler) marshalElem(i int, delim, k []byte, v VALUE, ancestry []ancestor) int {
+func (m *Marshaler) marshalElem(i int, delim, k []byte, v t.Value, ancestry []ancestor) int {
 	v = v.SetType()
 	if i == 0 {
 		delim = nil
@@ -751,13 +749,13 @@ func (m *Marshaler) marshalElem(i int, delim, k []byte, v VALUE, ancestry []ance
 		}
 		return i
 	}
-	if v.IsData() {
+	if v.Type().IsData() {
 		b, recursive := m.recursiveValue(v, ancestry)
 		if recursive {
 			if b != nil {
 				i++
 				m.bufferElem(delim, k, nil)
-				m.marshalBytes(b)
+				m.marshalString(string(b))
 			}
 			return i
 		}
@@ -830,72 +828,72 @@ func IsSpecialChar(b byte) bool {
 	return b < 0x30 || (b > 0x3a && b < 0x41) || (b > 0x5a && b < 0x61) || b > 0x7a
 }
 
-func (m *Marshaler) recursiveValue(v VALUE, ancestry []ancestor) (bytes []byte, is bool) {
+func (m *Marshaler) recursiveValue(v t.Value, ancestry []ancestor) (bytes []byte, is bool) {
 	for _, a := range ancestry {
-		if a.pointer == v.Uintptr() && a.typ == v.typ {
+		if a.pointer == v.Uintptr() && a.typ == v.Type() {
 			is = true
-			if v.Kind() == Struct && m.RecursiveName {
-				if m, ok := v.typ.Reflect().MethodByName("Name"); ok {
+			if v.Kind() == t.STRUCT && m.RecursiveName {
+				if m, ok := v.Type().Reflect().MethodByName("Name"); ok {
 					bytes = []byte(v.Reflect().Method(m.Index).Call([]reflect.Value{})[0].String())
-				} else if m, ok := v.typ.Reflect().MethodByName("String"); ok {
+				} else if m, ok := v.Type().Reflect().MethodByName("String"); ok {
 					bytes = []byte(v.Reflect().Method(m.Index).Call([]reflect.Value{})[0].String())
 				} else {
-					bytes = []byte(v.typ.NameShort())
+					bytes = []byte(v.Type().NameShort())
 				}
 			}
 			return
 		}
 	}
-	if v.Kind() == Pointer {
+	if v.Kind() == t.POINTER {
 		return m.recursiveValue(v.Elem(), ancestry)
 	}
 	return nil, false
 }
 
-func (m *Marshaler) ancestryPath(v VALUE, ancestry []ancestor) (path string, hasDataElem bool) {
+func (m *Marshaler) ancestryPath(v t.Value, ancestry []ancestor) (path string, hasDataElem bool) {
 	elKind := m.dataElemKind(v)
-	if elKind != Invalid {
+	if elKind != t.INVALID {
 		hasDataElem = true
 	}
 	path += m.ancestryPathVal(elKind) + m.ancestryPathVal(v.Kind())
 	for _, a := range ancestry {
-		if k := a.typ.Kind(); k != Pointer {
+		if k := a.typ.Kind(); k != t.POINTER {
 			path += m.ancestryPathVal(k)
 		}
 	}
 	return
 }
 
-func (m *Marshaler) ancestryPathVal(k KIND) string {
+func (m *Marshaler) ancestryPathVal(k byte) string {
 	switch k {
-	case Map, Struct:
+	case t.MAP, t.STRUCT:
 		return ":Map"
-	case Slice, Array:
+	case t.SLICE, t.ARRAY:
 		return ":Slice"
-	case Interface:
+	case t.INTERFACE:
 		return ":Interface"
 	default:
 		return ":Value"
 	}
 }
 
-func (m *Marshaler) dataElemKind(v VALUE) (kind KIND) {
-	f := func(i int, k string, e VALUE) (brake bool) {
+func (m *Marshaler) dataElemKind(v t.Value) (kind byte) {
+	f := func(i int, k string, e t.Value) (brake bool) {
 		if i == 0 {
-			kind = m.marshalKind(e.SetType().typ)
+			kind = m.marshalKind(e.SetType().Type())
 			return
 		}
-		if m.marshalKind(e.SetType().typ) != kind {
-			kind = Interface
+		if m.marshalKind(e.SetType().Type()) != kind {
+			kind = t.INTERFACE
 			return true
 		}
 		return
 	}
 	switch v.Kind() {
-	case Array:
-		kind = m.marshalKind((*arrayType)(unsafe.Pointer(v.typ)).elem)
-		if kind == Interface {
-			(ARRAY)(v).ForEach(f)
+	case t.ARRAY:
+		kind = m.marshalKind((*arrayType)(unsafe.Pointer(v.Type())).elem)
+		if kind == t.INTERFACE {
+			v.Slice().ForEach(f)
 		}
 		return
 	case Interface:
@@ -926,16 +924,16 @@ func (m *Marshaler) dataElemKind(v VALUE) (kind KIND) {
 	}
 }
 
-func (m *Marshaler) marshalKind(t *TYPE) KIND {
-	switch t.DeepPtrElem().Kind() {
-	case Array, Slice:
-		return Slice
-	case Map, Struct:
-		return Map
-	case Interface:
-		return Interface
+func (m *Marshaler) marshalKind(typ *t.Type) byte {
+	switch typ.DeepPtrElem().Kind() {
+	case t.ARRAY, t.SLICE:
+		return t.SLICE
+	case t.MAP, t.STRUCT:
+		return t.MAP
+	case t.INTERFACE:
+		return t.INTERFACE
 	default:
-		return Invalid
+		return t.INVALID
 	}
 }
 
@@ -1372,4 +1370,15 @@ func InBytes(a byte, b []byte) bool {
 		}
 	}
 	return false
+}
+
+func EscapeBytes(b []byte, escape byte, chars ...byte) []byte {
+	var escaped []byte
+	for _, c := range b {
+		if InBytes(c, chars) {
+			escaped = append(escaped, escape)
+		}
+		escaped = append(escaped, c)
+	}
+	return escaped
 }

@@ -38,8 +38,8 @@ const (
 // that caches the formatted time string
 // and updates it only when necessary
 type Time struct {
-	sync.Mutex
 	time.Time
+	sync.Mutex
 	fmt     string
 	cache   []byte
 	nsecPos int

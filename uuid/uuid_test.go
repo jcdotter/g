@@ -12,19 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package typ
+package uuid
 
 import (
 	"fmt"
 	"testing"
 )
 
-func TestTest(t *testing.T) {
-	s := []string{"a", "b", "c"}
-	SliceOf(&s).Extend(3)
-	s[5] = "f"
-	fmt.Println(len(s), s)
-	fmt.Println(ValueOf("test").Binary())
-	fmt.Println(ValueOf([]byte{116, 101, 115, 116}).Binary())
-	fmt.Println(ValueOf([]rune{116, 101, 115, 116}).Binary())
+func TestUid(t *testing.T) {
+	u := generateUid()
+	u1 := generateUid()
+
+	fmt.Println(u.String())
+	fmt.Println(u1.String())
+}
+
+func BenchmarkUid(b *testing.B) {
+	var u UUID
+	b.Run("generate", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			u = generateUid()
+		}
+	})
+	b.Run("string", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = u.String()
+		}
+	})
 }

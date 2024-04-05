@@ -30,11 +30,19 @@ var config = &test.Config{
 func TestTime(t *testing.T) {
 	gt := test.New(t, config)
 
-	d := Parse("2006-01-02 15:04:05", "2012-01-31 14:00:00")
-	gt.Equal("2012-01-31 14:00:00", d.String(), "time should be equal to '2012-01-31 14:00:00'")
+	d := Parse("2006-01-02 15:04:05", "2012-01-15 14:00:00")
+	gt.Equal("2012-01-15 14:00:00", d.String(), "time should be equal to '2012-01-15 14:00:00'")
+
 	gt.Equal("2012-01-01", d.YearStart(12).String(), "year start should be equal to '2012-01-01'")
 	gt.Equal("2011-02-01", d.YearStart(1).String(), "year start should be equal to '2011-02-01'")
+
+	gt.Equal("2012-12-31 23:59:59", d.YearEnd(12).String(), "year end should be equal to '2012-12-31 23:59:59'")
+	gt.Equal("2012-01-31 23:59:59", d.YearEnd(1).String(), "year end should be equal to '2012-01-31 23:59:59'")
+
 	gt.Equal("2012-01-01", d.QuarterStart(12).String(), "quarter start should be equal to '2012-01-01'")
 	gt.Equal("2011-11-01", d.QuarterStart(1).String(), "quarter start should be equal to '2011-11-01'")
+
+	gt.Equal("2012-03-31 23:59:59", d.QuarterEnd(12).String(), "quarter end should be equal to '2012-03-31 23:59:59'")
+	gt.Equal("2012-01-31 23:59:59", d.QuarterEnd(1).String(), "quarter end should be equal to '2012-01-31 23:59:59'")
 
 }
