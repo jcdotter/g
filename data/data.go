@@ -15,6 +15,7 @@
 package data
 
 import (
+	"sort"
 	"sync"
 	"unsafe"
 
@@ -218,4 +219,35 @@ func (d *Data) List() []Elem {
 		return nil
 	}
 	return d.l
+}
+
+func (d *Data) Keys() []string {
+	if d == nil {
+		return nil
+	}
+	keys := make([]string, len(d.l))
+	for i, v := range d.l {
+		keys[i] = v.Key()
+	}
+	return keys
+}
+
+func (d *Data) Values() []Elem {
+	if d == nil {
+		return nil
+	}
+	values := make([]Elem, len(d.l))
+	copy(values, d.l)
+	return values
+}
+
+func (d *Data) SortByKeys() *Data {
+	if d != nil {
+		d.Lock()
+		defer d.Unlock()
+		sort.Slice(d.l, func(i, j int) bool {
+			return d.l[i].Key() < d.l[j].Key()
+		})
+	}
+	return d
 }

@@ -62,7 +62,7 @@ func (v Value) Pointer() unsafe.Pointer {
 
 // Uintptr returns the value as a uintptr
 func (v Value) Uintptr() uintptr {
-	return v.Value.Pointer()
+	return uintptr(v.Pointer())
 }
 
 // Elem returns the value that the pointer points to
@@ -96,6 +96,23 @@ func (v Value) SetType() Value {
 		}
 	}
 	return v
+}
+
+// IsNil returns true if the value is nil
+func (v Value) IsNil() bool {
+	switch v.Kind() {
+	case CHAN, FUNC, MAP, POINTER, SLICE, INTERFACE, UNSAFEPOINTER:
+		return v.Value.IsNil()
+	}
+	return false
+}
+
+// Len returns the length of the value
+func (v Value) Len() int {
+	if v.Kind() == STRUCT {
+		return v.Type().NumField()
+	}
+	return v.Value.Len()
 }
 
 // Slice returns a slice type converter

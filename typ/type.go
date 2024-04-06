@@ -654,13 +654,13 @@ func (n name) tagValue(tag string) (value string) {
 	var name string
 	var val bool
 	for i := 0; i < l; i++ {
-		if name, i, val = n.parseTagNameAt(tag, i); !val {
+		if name, i, val = n.parseTagNameAt(t, i); !val {
 			if name == tag {
 				return "true"
 			}
 			goto next
 		}
-		if value, i = n.parseTagValueAt(tag, i); name == tag {
+		if value, i = n.parseTagValueAt(t, i); name == tag {
 			return value
 		}
 	next:
