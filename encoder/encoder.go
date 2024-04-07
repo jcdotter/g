@@ -364,8 +364,8 @@ func (m *Encoder) encode(v t.Value, ancestry ...ancestor) {
 		m.encodeBool(v.Bool())
 	case t.INT, t.INT8, t.INT16, t.INT32, t.INT64, t.UINT, t.UINT8, t.UINT16, t.UINT32, t.UINT64, t.UINTPTR, t.FLOAT32, t.FLOAT64, t.COMPLEX64, t.COMPLEX128:
 		m.encodeNum(v)
-	case t.ARRAY:
-		m.encodeArray(v.Slice(), ancestry...)
+	case t.ARRAY, t.SLICE:
+		m.encodeSlice(v.Slice(), ancestry...)
 	case t.FUNC:
 		m.encodeFunc(v)
 	case t.INTERFACE:
@@ -374,8 +374,6 @@ func (m *Encoder) encode(v t.Value, ancestry ...ancestor) {
 		m.encodeMap(v.Map(), ancestry...)
 	case t.POINTER:
 		m.encodePointer(v, ancestry...)
-	case t.SLICE:
-		m.encodeSlice(v.Slice(), ancestry...)
 	case t.STRING:
 		m.encodeString(*(*string)(v.Pointer()))
 	case t.STRUCT:
@@ -450,20 +448,6 @@ func (m *Encoder) encodeNum(v t.Value) {
 		return
 	}
 	m.bufferBytes(bytes)
-}
-
-func (m *Encoder) encodeArray(a t.Slice, ancestry ...ancestor) {
-	if a.Len() == 0 {
-		m.encodeEmptySlice()
-		return
-	}
-	delim, end, ancestry := m.encodeSliceStart(a.Value, ancestry)
-	var j int
-	a.ForEach(func(i int, v t.Value) (brake bool) {
-		j = m.encodeElem(j, delim, nil, v, ancestry)
-		return
-	})
-	m.encodeEnd(end)
 }
 
 func (m *Encoder) encodeFunc(v t.Value) {

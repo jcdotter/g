@@ -48,16 +48,10 @@ type StructPtrStruct struct{ V1, V2 *StructString }
 type StructAny struct{ V1, V2 any }
 
 func init() {
-	Vals = createTestVars(false, 0, "false")
+	Vals = ValMap(*new(bool), *new(int), *new(string))
 }
 
-/* func getTestVarsGmap() Gmap {
-	m := MapOf(createTestVars(false, 0, "false")).Gmap()
-	m.SortByKeys()
-	return m
-} */
-
-func createTestVars(b bool, i int, s string, item ...string) map[string]any {
+func ValMap(b bool, i int, s string, item ...string) map[string]any {
 	v := map[string]any{
 		"bool":   b,
 		"int":    i,

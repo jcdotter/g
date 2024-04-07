@@ -311,6 +311,18 @@ func (m Map) ForEach(fn func(k, v Value) (brake bool)) {
 }
 
 // Keys returns the keys of the map
+func (m Map) KeyVals() (k []string, v []any) {
+	k = make([]string, m.Len())
+	v = make([]any, m.Len())
+	iter := m.MapRange()
+	for i := 0; iter.Next(); i++ {
+		k[i] = iter.Key().String()
+		v[i] = iter.Value().Interface()
+	}
+	return
+}
+
+// Keys returns the keys of the map
 func (m Map) Keys() []string {
 	keys := make([]string, m.Len())
 	iter := m.MapRange()
