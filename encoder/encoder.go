@@ -24,6 +24,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/jcdotter/go/buffer"
 	t "github.com/jcdotter/go/typ"
 	"github.com/jcdotter/go/uuid"
 )
@@ -41,14 +42,12 @@ import (
 
 type Encoder struct {
 	// encoder state
-	cursor      int    // the current position in the buffer
-	curDepth    int    // the current depth of the data structure
-	curIndent   int    // the current indentation level
-	hasBrackets bool   // true when encoding with brackets around data objects
-	value       any    // the value being encodeled
-	buffer      []byte // the buffer being encodeled to
-	len         int    // the length of the buffer
-	availBuf    int    // the available buffer space
+	buffer      *buffer.Buffer // the encoder buffer
+	value       any            // the value being encodeled
+	cursor      int            // the current position in the buffer
+	curDepth    int            // the current depth of the data structure
+	curIndent   int            // the current indentation level
+	hasBrackets bool           // true when encoding with brackets around data objects
 	// encoding syntax
 	Type              string // the type of encoder. json, yaml, etc.
 	Space             []byte // the space characters
@@ -244,11 +243,9 @@ func (m *Encoder) New() *Encoder {
 }
 
 func (m *Encoder) Reset() {
-	m.availBuf = 10
-	m.buffer = make([]byte, 0, m.availBuf)
+	m.buffer.Reset()
 	m.cursor = 0
 	m.curIndent = 0
-	m.len = 0
 	m.value = nil
 	m.sliceParts = map[string][3][]byte{}
 	m.mapParts = map[string][3][]byte{}
@@ -264,11 +261,11 @@ func (m *Encoder) ResetCursor() {
 }
 
 // ----------------------------------------------------------------------------
-// Getter Utilities
+// Read Utilities
 // for getting non-exported state values from the encoder
 
 func (m *Encoder) Buffer() []byte {
-	return m.buffer
+	return m.buffer.Buffer()
 }
 
 func (m *Encoder) Cursor() int {
@@ -280,7 +277,7 @@ func (m *Encoder) CurIndent() int {
 }
 
 func (m *Encoder) Len() int {
-	return m.len
+	return m.buffer.Len()
 }
 
 func (m *Encoder) Value() any {
@@ -288,11 +285,11 @@ func (m *Encoder) Value() any {
 }
 
 func (m Encoder) Bytes() []byte {
-	return m.buffer
+	return m.buffer.Bytes()
 }
 
 func (m Encoder) String() string {
-	return string(m.buffer)
+	return m.buffer.String()
 }
 
 func (m Encoder) Formatted(indent ...int) string {
@@ -343,20 +340,42 @@ func (m Encoder) Slice() []any {
 }
 
 // ----------------------------------------------------------------------------
+// Write Utilities
+// for writting to the encoder buffer
+
+func (m *Encoder) write(b []byte) {
+	m.buffer.Write(b)
+}
+
+func (m *Encoder) writeQuoted(b []byte) {
+	m.buffer.WriteByte(m.quote)
+	m.buffer.Write(b)
+	m.buffer.WriteByte(m.quote)
+}
+
+func (m *Encoder) writeString(s string) {
+	m.buffer.WriteString(s)
+}
+
+func (m *Encoder) writeQuotedString(s string) {
+	m.buffer.WriteByte(m.quote)
+	m.buffer.Write(EscapeString(s, m.quote, m.escape))
+	m.buffer.WriteByte(m.quote)
+}
+
+// ----------------------------------------------------------------------------
 // Encode Utilities
 // methods for encoding to type
-// ------------------------------------------------------------ /
 
 func (m *Encoder) Encode(a any) *Encoder {
 	m.Reset()
 	m.encode(t.ValueOf(a))
-	m.setLen()
 	return m
 }
 
 func (m *Encoder) encode(v t.Value, ancestry ...ancestor) {
 	if v.IsNil() {
-		m.bufferBytes(m.Null)
+		m.write(m.Null)
 		return
 	}
 	switch v.KindX() {
@@ -401,10 +420,10 @@ func (m *Encoder) encodeBool(b bool) {
 		bytes = []byte("false")
 	}
 	if m.QuotedBool {
-		m.SetBuffer(append(append(append(m.buffer, m.quote), bytes...), m.quote))
+		m.writeQuoted(bytes)
 		return
 	}
-	m.bufferBytes(bytes)
+	m.write(bytes)
 }
 
 func (m *Encoder) encodeNum(v t.Value) {
@@ -444,14 +463,14 @@ func (m *Encoder) encodeNum(v t.Value) {
 		panic("cannot encode type '" + v.Type().String() + "'")
 	}
 	if m.QuotedNum {
-		m.SetBuffer(append(append(append(m.buffer, m.quote), bytes...), m.quote))
+		m.writeQuoted(bytes)
 		return
 	}
-	m.bufferBytes(bytes)
+	m.write(bytes)
 }
 
 func (m *Encoder) encodeFunc(v t.Value) {
-	m.bufferBytes([]byte(v.Type().Name()))
+	m.encodeString(v.Type().Name())
 }
 
 func (m *Encoder) encodeInterface(v t.Value, ancestry ...ancestor) {
@@ -497,7 +516,6 @@ func (m *Encoder) encodeSlice(s t.Slice, ancestry ...ancestor) {
 }
 
 func (m *Encoder) encodeString(s string) {
-	b := []byte(s)
 	quoted := m.QuotedString
 	if !quoted && m.QuotedSpecial {
 		if ContainsSpecial(s) {
@@ -505,10 +523,10 @@ func (m *Encoder) encodeString(s string) {
 		}
 	}
 	if quoted {
-		m.SetBuffer(append(append(append(m.buffer, m.quote), EscapeBytes(b, m.quote, m.escape)...), m.quote))
+		m.writeQuotedString(s)
 		return
 	}
-	m.bufferBytes(b)
+	m.writeString(s)
 }
 
 func (m *Encoder) encodeStruct(s t.Struct, ancestry ...ancestor) {
@@ -541,7 +559,7 @@ func (m *Encoder) encodetStructByMethod(s t.Struct) bool {
 	if m.methods != nil {
 		if index, ok := m.methods[s.Type()]; ok {
 			if index != -1 {
-				m.bufferBytes([]byte(s.Method(index).Call(nil)[0].String()))
+				m.write([]byte(s.Method(index).Call(nil)[0].String()))
 				return true
 			}
 			return false
@@ -558,7 +576,7 @@ func (m *Encoder) encodetStructByMethod(s t.Struct) bool {
 			if in == 1 && out > 0 {
 				if k := t.FromReflectType(meth.Type.Out(0)).KindX(); k == t.STRING || k == t.BINARY {
 					m.methods[s.Type()] = meth.Index
-					m.bufferBytes([]byte(s.Reflect().Method(meth.Index).Call(nil)[0].String()))
+					m.write([]byte(s.Reflect().Method(meth.Index).Call(nil)[0].String()))
 					return true
 				}
 			}
@@ -698,30 +716,32 @@ func (m *Encoder) encodeNonPtrParent(ancestry []ancestor, pos int) byte {
 
 func (m *Encoder) encodeEmptySlice() {
 	if !m.hasBrackets {
-		m.bufferBytes(m.Null)
+		m.write(m.Null)
 		return
 	}
-	m.SetBuffer(append(append(m.buffer, m.SliceStart...), m.SliceEnd...))
+	m.write(m.SliceStart)
+	m.write(m.SliceEnd)
 }
 
 func (m *Encoder) encodeEmptyMap() {
 	if !m.hasBrackets {
-		m.bufferBytes(m.Null)
+		m.write(m.Null)
 		return
 	}
-	m.SetBuffer(append(append(m.buffer, m.MapStart...), m.MapEnd...))
+	m.write(m.MapStart)
+	m.write(m.MapEnd)
 }
 
 func (m *Encoder) encodeSliceStart(v t.Value, a []ancestor) (delim []byte, end []byte, ancestry []ancestor) {
 	start, delim, end := m.encodeSliceComponents(v, a)
-	m.bufferBytes(start)
+	m.write(start)
 	m.IncDepth()
 	return delim, end, append([]ancestor{{v.Type(), v.Uintptr()}}, a...)
 }
 
 func (m *Encoder) encodeMapStart(v t.Value, a []ancestor) (delim []byte, end []byte, ancestry []ancestor) {
 	start, delim, end := m.encodeMapComponents(v, a)
-	m.bufferBytes(start)
+	m.write(start)
 	m.IncDepth()
 	return delim, end, append([]ancestor{{v.Type(), v.Uintptr()}}, a...)
 }
@@ -762,19 +782,20 @@ func (m *Encoder) encodeElem(i int, delim, k []byte, v t.Value, ancestry []ances
 }
 
 func (m *Encoder) bufferElem(del, key, val []byte) {
+	m.write(del)
 	if key != nil {
 		if m.QuotedKey {
-			m.SetBuffer(append(append(append(append(append(append(m.buffer, del...), m.quote), key...), m.quote), m.keyEnd...), val...))
-			return
+			m.writeQuoted(key)
+		} else {
+			m.write(key)
 		}
-		m.SetBuffer(append(append(append(append(m.buffer, del...), key...), m.keyEnd...), val...))
-		return
+		m.write(m.keyEnd)
 	}
-	m.SetBuffer(append(append(m.buffer, del...), val...))
+	m.write(val)
 }
 
 func (m *Encoder) encodeEnd(end []byte) {
-	m.bufferBytes(end)
+	m.write(end)
 	m.decDepth()
 }
 
@@ -794,20 +815,6 @@ func (m *Encoder) setIndent() {
 	} else {
 		m.curIndent = m.curDepth
 	}
-}
-
-func (m *Encoder) bufferBytes(b []byte) {
-	m.buffer = append(m.buffer, b...)
-}
-
-func (m *Encoder) setLen() {
-	m.len = len(m.buffer)
-}
-
-// first arg should be the buffer to append,
-// or not, to replace the buffer
-func (m *Encoder) SetBuffer(b []byte) {
-	m.buffer = b
 }
 
 func ContainsSpecial(s string) bool {
@@ -942,18 +949,18 @@ func (m *Encoder) decodeError(err string) {
 	case m.cursor == 0:
 		start = 0
 		mid = 0
-		end = int(math.Min(float64(m.len-1), 25))
-	case m.cursor >= m.len:
-		start = int(math.Max(0, float64(m.len-1-25)))
-		mid = m.len
-		end = m.len
+		end = int(math.Min(float64(m.Len()-1), 25))
+	case m.cursor >= m.Len():
+		start = int(math.Max(0, float64(m.Len()-1-25)))
+		mid = m.Len()
+		end = m.Len()
 	default:
 		start = int(math.Max(0, float64(m.cursor-25)))
 		mid = m.cursor
-		end = int(math.Min(float64(m.len-1), float64(m.cursor+25)))
+		end = int(math.Min(float64(m.Len()-1), float64(m.cursor+25)))
 	}
-	panic("decode error at position " + strconv.Itoa(m.cursor) + " of " + strconv.Itoa(m.len) + "\n" +
-		"tried to decode:\n" + string(m.buffer[start:mid]) + "<ERROR>" + string(m.buffer[mid:end]) + "\n" +
+	panic("decode error at position " + strconv.Itoa(m.cursor) + " of " + strconv.Itoa(m.Len()) + "\n" +
+		"tried to decode:\n" + string(m.Buffer()[start:mid]) + "<ERROR>" + string(m.Buffer()[mid:end]) + "\n" +
 		"error: " + err)
 }
 
@@ -961,7 +968,6 @@ func (m *Encoder) Decode(bytes ...[]byte) *Encoder {
 	m.ResetCursor()
 	if len(bytes) > 0 {
 		m.buffer = bytes[0]
-		m.len = len(m.buffer)
 	}
 	m.value = nil
 	var slice []any
@@ -1366,13 +1372,24 @@ func InBytes(a byte, b []byte) bool {
 	return false
 }
 
-func EscapeBytes(b []byte, escape byte, chars ...byte) []byte {
-	var escaped []byte
+func EscapeBytes(b []byte, escape byte, chars ...byte) (escaped []byte) {
+	escaped = make([]byte, 0, len(b))
 	for _, c := range b {
 		if InBytes(c, chars) {
 			escaped = append(escaped, escape)
 		}
 		escaped = append(escaped, c)
+	}
+	return escaped
+}
+
+func EscapeString(s string, escape byte, chars ...byte) (escaped []byte) {
+	escaped = make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		if InBytes(s[i], chars) {
+			escaped = append(escaped, escape)
+		}
+		escaped = append(escaped, s[i])
 	}
 	return escaped
 }

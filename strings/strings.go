@@ -14,7 +14,9 @@
 
 package strings
 
-import "strings"
+import (
+	"strings"
+)
 
 // Width returns string s trucated or expanded with whitespaces
 // to meet the N number of chars provided
