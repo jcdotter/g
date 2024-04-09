@@ -243,7 +243,11 @@ func (m *Encoder) New() *Encoder {
 }
 
 func (m *Encoder) Reset() {
-	m.buffer.Reset()
+	if m.buffer == nil {
+		m.buffer = buffer.New()
+	} else {
+		m.buffer.Reset()
+	}
 	m.cursor = 0
 	m.curIndent = 0
 	m.value = nil
@@ -938,10 +942,9 @@ func (m *Encoder) encodeKind(typ *t.Type) byte {
 	}
 }
 
-// ------------------------------------------------------------ /
+// ----------------------------------------------------------------------------
 // Decode Utilities
 // methods for decoding from type
-// ------------------------------------------------------------ /
 
 func (m *Encoder) decodeError(err string) {
 	var start, mid, end int
@@ -967,13 +970,13 @@ func (m *Encoder) decodeError(err string) {
 func (m *Encoder) Decode(bytes ...[]byte) *Encoder {
 	m.ResetCursor()
 	if len(bytes) > 0 {
-		m.buffer = bytes[0]
+		m.buffer.Set(bytes[0])
 	}
 	m.value = nil
 	var slice []any
 	var hmap map[string]any
 	var value any
-	for m.cursor < m.len {
+	for m.cursor < m.Len() {
 		slice, hmap = m.decodeObject()
 		if slice != nil {
 			m.value = slice
@@ -1009,7 +1012,7 @@ func (m *Encoder) decodeObject(ancestry ...ancestor) (slice []any, hmap map[stri
 
 func (m *Encoder) decodeSlice(delim, end []byte, ancestry ...ancestor) (slice []any) {
 	ancestry = append([]ancestor{{sliceType, 0}}, ancestry...)
-	for m.cursor < m.len {
+	for m.cursor < m.Len() {
 		slice = append(slice, m.decodeItem([][]byte{delim, end}, ancestry...))
 		m.decodeNonData()
 		if m.isMatch(delim) {
@@ -1029,7 +1032,7 @@ func (m *Encoder) decodeSlice(delim, end []byte, ancestry ...ancestor) (slice []
 func (m *Encoder) decodeMap(delim, end []byte, ancestry ...ancestor) map[string]any {
 	ancestry = append([]ancestor{{mapType, 0}}, ancestry...)
 	hmap := map[string]any{}
-	for m.cursor < m.len {
+	for m.cursor < m.Len() {
 		hmap[m.decodeKey()] = m.decodeItem([][]byte{delim, end}, ancestry...)
 		m.decodeNonData()
 		if m.isMatch(delim) {
@@ -1071,7 +1074,7 @@ func (m *Encoder) decodeKey() (key string) {
 		key = m.decodeQuote()
 	}
 	s := m.cursor
-	for m.cursor < m.len {
+	for m.cursor < m.Len() {
 		if m.isKeyEnd() {
 			m.Inc()
 			break
@@ -1079,20 +1082,20 @@ func (m *Encoder) decodeKey() (key string) {
 		m.Inc()
 	}
 	if key == "" {
-		key = string(m.buffer[s : m.cursor-1])
+		key = string(m.Buffer()[s : m.cursor-1])
 	}
 	return
 }
 
 func (m *Encoder) decodeAny(end ...[]byte) any {
 	s := m.cursor
-	for m.cursor < m.len {
+	for m.cursor < m.Len() {
 		if m.isMatch(end...) || m.isMatch(m.LineBreak) {
 			break
 		}
 		m.Inc()
 	}
-	a := strings.Trim(string(m.buffer[s:m.cursor]), string(m.Space))
+	a := strings.Trim(string(m.Buffer()[s:m.cursor]), string(m.Space))
 	if a == "" {
 		return nil
 	}
@@ -1117,10 +1120,10 @@ func (m *Encoder) decodeAny(end ...[]byte) any {
 }
 
 func (m *Encoder) decodeQuote() string {
-	q := m.buffer[m.cursor]
+	q := m.Buffer()[m.cursor]
 	m.Inc()
 	s := m.cursor
-	for m.cursor < m.len {
+	for m.cursor < m.Len() {
 		if m.isEscape() {
 			m.Inc(2)
 			continue
@@ -1131,7 +1134,7 @@ func (m *Encoder) decodeQuote() string {
 		}
 		m.Inc()
 	}
-	return string(m.buffer[s : m.cursor-1])
+	return string(m.Buffer()[s : m.cursor-1])
 }
 
 func (m *Encoder) decodeNull() any {
@@ -1141,26 +1144,26 @@ func (m *Encoder) decodeNull() any {
 
 func (m *Encoder) decodeSpace() string {
 	s := m.cursor
-	for m.cursor < m.len {
+	for m.cursor < m.Len() {
 		if !m.isSpace() {
 			break
 		}
 		m.Inc()
 	}
-	return string(m.buffer[s : m.cursor-1])
+	return string(m.Buffer()[s : m.cursor-1])
 }
 
 func (m *Encoder) decodeCommentBlock() []byte {
 	if m.isBlockCommentStart() {
 		s := m.cursor
-		for m.cursor < m.len {
+		for m.cursor < m.Len() {
 			if m.isBlockCommentEnd() {
 				m.Inc(len(m.BlockCommentEnd))
 				break
 			}
 			m.Inc()
 		}
-		return m.buffer[s : m.cursor+len(m.BlockCommentEnd)-1]
+		return m.Buffer()[s : m.cursor+len(m.BlockCommentEnd)-1]
 	}
 	return nil
 }
@@ -1168,21 +1171,21 @@ func (m *Encoder) decodeCommentBlock() []byte {
 func (m *Encoder) decodeInlineComment() []byte {
 	if m.isLineCommentStart() {
 		s := m.cursor
-		for m.cursor < m.len {
+		for m.cursor < m.Len() {
 			if m.isLineCommentEnd() {
 				m.Inc(len(m.LineCommentEnd))
 				break
 			}
 			m.Inc()
 		}
-		return m.buffer[s : m.cursor+len(m.LineCommentEnd)-1]
+		return m.Buffer()[s : m.cursor+len(m.LineCommentEnd)-1]
 	}
 	return nil
 }
 
 func (m *Encoder) decodeNonData() []byte {
 	data, s := false, m.cursor
-	for m.cursor < m.len && !data {
+	for m.cursor < m.Len() && !data {
 		switch {
 		case m.isBlockCommentStart():
 			m.decodeCommentBlock()
@@ -1194,21 +1197,21 @@ func (m *Encoder) decodeNonData() []byte {
 			data = true
 		}
 	}
-	return m.buffer[s:m.cursor]
+	return m.Buffer()[s:m.cursor]
 }
 
 func (m *Encoder) DecodeTo(stop []byte) []byte {
 	s := m.cursor
 	e := stop[0]
-	for m.cursor < m.len {
+	for m.cursor < m.Len() {
 		if m.ByteIs(e) {
-			if MatchBytes(m.buffer[m.cursor:m.cursor+len(stop)], stop) {
+			if MatchBytes(m.Buffer()[m.cursor:m.cursor+len(stop)], stop) {
 				m.Inc(len(stop))
 				break
 			}
 		}
 	}
-	return m.buffer[s:m.cursor]
+	return m.Buffer()[s:m.cursor]
 }
 
 func (m *Encoder) decodeSliceStart(ancestry []ancestor) (delim, end []byte, is bool) {
@@ -1275,10 +1278,10 @@ func (m *Encoder) Inc(i ...int) {
 }
 
 func (m *Encoder) Byte() byte {
-	if m.len == 0 {
+	if m.Len() == 0 {
 		return 0
 	}
-	return m.buffer[m.cursor]
+	return m.Buffer()[m.cursor]
 }
 
 func (m *Encoder) ByteIs(b byte) bool {
@@ -1286,15 +1289,15 @@ func (m *Encoder) ByteIs(b byte) bool {
 }
 
 func (m *Encoder) isSpace() bool {
-	return InBytes(m.buffer[m.cursor], m.Space)
+	return InBytes(m.Buffer()[m.cursor], m.Space)
 }
 
 func (m *Encoder) isQuote() bool {
-	return InBytes(m.buffer[m.cursor], m.Quote)
+	return InBytes(m.Buffer()[m.cursor], m.Quote)
 }
 
 func (m *Encoder) isEscape() bool {
-	return InBytes(m.buffer[m.cursor], m.Escape)
+	return InBytes(m.Buffer()[m.cursor], m.Escape)
 }
 
 func (m *Encoder) isNull() bool {
@@ -1304,11 +1307,11 @@ func (m *Encoder) isNull() bool {
 func (m *Encoder) isKey() bool {
 	i := m.cursor
 	l := len(m.KeyEnd)
-	for i < m.len {
-		if m.buffer[i] == m.LineBreak[0] {
+	for i < m.Len() {
+		if m.Buffer()[i] == m.LineBreak[0] {
 			return false
 		}
-		if MatchBytes(m.buffer[i:i+l], m.KeyEnd) {
+		if MatchBytes(m.Buffer()[i:i+l], m.KeyEnd) {
 			return true
 		}
 		i++
@@ -1317,7 +1320,7 @@ func (m *Encoder) isKey() bool {
 }
 
 func (m *Encoder) isKeyEnd() bool {
-	return InBytes(m.buffer[m.cursor], m.KeyEnd)
+	return InBytes(m.Buffer()[m.cursor], m.KeyEnd)
 }
 
 func (m *Encoder) isBlockCommentStart() bool {
@@ -1337,10 +1340,10 @@ func (m *Encoder) isLineCommentEnd() bool {
 
 func (m *Encoder) isMatch(b ...[]byte) bool {
 	for _, s := range b {
-		if m.len-m.cursor < len(s) {
+		if m.Len()-m.cursor < len(s) {
 			continue
 		}
-		if MatchBytes(m.buffer[m.cursor:m.cursor+len(s)], s) {
+		if MatchBytes(m.Buffer()[m.cursor:m.cursor+len(s)], s) {
 			return true
 		}
 	}
