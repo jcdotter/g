@@ -9,12 +9,24 @@
       Methods:
         - Name: GET
           Response:
-            - Header: 
-                - Key: Content-Type
-                  Value: application/json
+            Header: 
+              - Key: Content-Type
+                Value: application/json
+            Body:
+              - id: int
+                name: string
+                hex: string
     - Name: Color
       Url: https://api.sampleapis.com/csscolornames/colors/:id
       Methods:
-        - Method: GET
+        - Name: GET
+          Response:
+            Header: 
+              - Key: Content-Type
+                Value: application/json
+            Body:
+              id: int
+              name: string
+              hex: string
 
 ```

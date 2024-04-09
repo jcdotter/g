@@ -109,10 +109,13 @@ func (t ContentType) String() string {
 type DataType byte
 
 const (
-	BOOL DataType = iota
+	NONE DataType = iota
+	BOOL
 	INT
 	FLOAT
 	STRING
+	LIST
+	OBJECT
 )
 
 type Object map[string]any
@@ -199,18 +202,31 @@ type Response struct {
 	Body   any
 }
 
-type param struct {
-	key *string
-	typ *string
-}
+// ----------------------------------------------------------------------------
+// PARAM
 
-func Param(k, t string) *param {
-	return &param{
-		key: &k,
-		typ: &t,
-	}
+// Param is an element of an object or list
+// which may be found in the url, header, or
+// body of a request or response
+type param struct {
+	// if the param belongs to an object
+	// the key will be the field name,
+	// otherwise the param belongs to a list
+	// and the key will be the index
+	key string
+	// the datatype of the param
+	typ DataType
+	// if the param is a list with a
+	// single datatype and variable length
+	// the elm will be the datatype of the
+	// elements in the list or object
+	elm DataType
+	// if the param is an objsect or a list
+	// the els will be the data elements
+	// in the object or list
+	els *data.Data
 }
 
 func (p *param) Key() string {
-	return *p.key
+	return p.key
 }
