@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/jcdotter/go/data"
+	"github.com/jcdotter/go/test"
 )
 
 func TestApi(t *testing.T) {
@@ -25,7 +25,7 @@ func TestApi(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
-	a := &Api{
+	/* a := &Api{
 		Protocol: REST,
 		Url:      "https://api.sampleapis.com/",
 		Resources: data.Of(
@@ -59,5 +59,20 @@ func TestNew(t *testing.T) {
 			"name": STRING,
 			"hex":  STRING,
 		},
-	}
+	} */
+}
+
+func TestDataType(t *testing.T) {
+
+	test.Assert(t, INT.String(), "int")
+	test.Assert(t, STRING.String(), "string")
+	test.Assert(t, FLOAT.String(), "float")
+	test.Assert(t, BOOL.String(), "bool")
+	test.Assert(t, LIST.String(), "list")
+	test.Assert(t, OBJECT.String(), "object")
+
+}
+
+func TestParam(t *testing.T) {
+
 }

@@ -118,8 +118,30 @@ const (
 	OBJECT
 )
 
+var (
+	dataTypeString = "noneboolintfloatstringlistobject"
+	dataTypeIndex  = []int{0, 4, 8, 11, 16, 22, 26, 32}
+	dataType       = map[string]DataType{
+		"none":   NONE,
+		"bool":   BOOL,
+		"int":    INT,
+		"float":  FLOAT,
+		"string": STRING,
+		"list":   LIST,
+		"object": OBJECT,
+	}
+)
+
 type Object map[string]any
 type List []any
+
+func DataTypeOf(s string) DataType {
+	return dataType[s]
+}
+
+func (d DataType) String() string {
+	return dataTypeString[dataTypeIndex[d]:dataTypeIndex[d+1]]
+}
 
 // ----------------------------------------------------------------------------
 // API
@@ -130,9 +152,56 @@ type Api struct {
 	Auth      *Api
 	Url       string
 	Resources *data.Data
-	Params    *data.Data
-	Header    *data.Data
-	Data      *data.Data
+	// the following are global elements
+	// that apply to all resources
+	Params *data.Data
+	Header *data.Data
+	// should be request and response bodies
+	Data *data.Data
+}
+
+func New(protocol Protocol, url string) *Api {
+	return &Api{
+		Protocol:  protocol,
+		Url:       url,
+		Resources: data.Make[*Resource](4),
+		Params:    data.Make[*param](4),
+		Header:    data.Make[*param](4),
+		Data:      data.Make[*param](4),
+	}
+}
+
+func FromYaml(yaml []byte) []*Api {
+	return nil
+}
+
+func FromMap(m map[string]any) (api *Api) {
+	if url, ok := m["url"]; ok {
+		api = New(REST, url.(string))
+		for k, v := range m {
+			var d *data.Data
+			switch k {
+			case "params":
+				d = api.Params
+			case "header":
+				d = api.Header
+			case "data":
+				d = api.Data
+			}
+			if d != nil {
+				for _, val := range v.([]any) {
+					// add param
+					// need func that intakes a map[string]any
+					// and returns a *param
+				}
+			}
+		}
+		// add resources
+		// range resources as []any
+		// need func that intakes a map[string]any
+		// and returns a *Resource
+	}
+	return
 }
 
 func (a *Api) Resource(key string) *Resource {
@@ -216,15 +285,24 @@ type param struct {
 	key string
 	// the datatype of the param
 	typ DataType
-	// if the param is a list with a
-	// single datatype and variable length
+	// if the param is an object or aclist with
+	// a single datatype and variable length,
 	// the elm will be the datatype of the
-	// elements in the list or object
+	// elements in the object or list
 	elm DataType
-	// if the param is an objsect or a list
+	// if the param is an object or a list
 	// the els will be the data elements
 	// in the object or list
 	els *data.Data
+}
+
+func Param(key string, typ, elem *param) *param {
+	return &param{
+		key: key,
+		typ: typ,
+		elm: elem,
+		els: data.Make[any](),
+	}
 }
 
 func (p *param) Key() string {
