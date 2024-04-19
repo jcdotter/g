@@ -1,6 +1,8 @@
 package api
 
 import (
+	"strconv"
+
 	"github.com/jcdotter/go/data"
 )
 
@@ -152,12 +154,14 @@ type Api struct {
 	Auth      *Api
 	Url       string
 	Resources *data.Data
+
 	// the following are global elements
 	// that apply to all resources
-	Params *data.Data
-	Header *data.Data
-	// should be request and response bodies
-	Data *data.Data
+
+	Params   *data.Data // url params
+	Header   *data.Data // request header
+	Request  *data.Data // request body
+	Response *data.Data // response body
 }
 
 func New(protocol Protocol, url string) *Api {
@@ -167,7 +171,8 @@ func New(protocol Protocol, url string) *Api {
 		Resources: data.Make[*Resource](4),
 		Params:    data.Make[*param](4),
 		Header:    data.Make[*param](4),
-		Data:      data.Make[*param](4),
+		Request:   data.Make[*param](4),
+		Response:  data.Make[*param](4),
 	}
 }
 
@@ -185,14 +190,19 @@ func FromMap(m map[string]any) (api *Api) {
 				d = api.Params
 			case "header":
 				d = api.Header
-			case "data":
-				d = api.Data
+			case "request":
+				d = api.Request
+			case "response":
+				d = api.Response
 			}
 			if d != nil {
-				for _, val := range v.([]any) {
-					// add param
-					// need func that intakes a map[string]any
-					// and returns a *param
+				switch v := v.(type) {
+				case map[string]any:
+					_, p := ParamMap(v)
+					d.Add(p)
+				case []any:
+					_, p := ParamList(v)
+					d.Add(p)
 				}
 			}
 		}
@@ -200,6 +210,12 @@ func FromMap(m map[string]any) (api *Api) {
 		// range resources as []any
 		// need func that intakes a map[string]any
 		// and returns a *Resource
+		// add resource to api.Resources
+		if r, ok := m["resources"]; ok {
+			for k, v := range r.(map[string]any) {
+				api.Resources.Add(ResourceFromMap(k, v))
+			}
+		}
 	}
 	return
 }
@@ -217,7 +233,11 @@ func (a *Api) Resource(key string) *Resource {
 	}
 }
 
+// ----------------------------------------------------------------------------
+// API RESOURCE
+
 type Resource struct {
+	Name      string
 	Uri       string
 	Methods   *data.Data
 	Resources *data.Data
@@ -226,8 +246,48 @@ type Resource struct {
 	Data      *data.Data
 }
 
+func NewResource(name, uri string) *Resource {
+	return &Resource{
+		Name:      name,
+		Uri:       uri,
+		Methods:   data.Make[*Method](4),
+		Resources: data.Make[*Resource](4),
+		Params:    data.Make[*param](4),
+		Header:    data.Make[*param](4),
+		Data:      data.Make[*param](4),
+	}
+}
+
+func ResourceMap(k string, v map[string]any) (r *Resource) {
+	if uri, ok := v["uri"]; ok {
+		r = NewResource(k, uri.(string))
+		for k, v := range v {
+			var d *data.Data
+			switch k {
+			case "params":
+				d = r.Params
+			case "header":
+				d = r.Header
+			case "data":
+				d = r.Data
+			}
+			if d != nil {
+				switch v := v.(type) {
+				case map[string]any:
+					_, p := ParamMap(v)
+					d.Add(p)
+				case []any:
+					_, p := ParamList(v)
+					d.Add(p)
+				}
+			}
+		}
+	}
+	return
+}
+
 func (r *Resource) Key() string {
-	return r.Uri
+	return r.Name
 }
 
 func (r *Resource) Resource(id, name string) *Resource {
@@ -299,10 +359,55 @@ type param struct {
 func Param(key string, typ, elem *param) *param {
 	return &param{
 		key: key,
-		typ: typ,
+		/* typ: typ,
 		elm: elem,
-		els: data.Make[any](),
+		els: data.Make[any](), */
 	}
+}
+
+func ParamMap(m map[string]any) (e DataType, d *data.Data) {
+	d = data.Make[*param](len(m))
+	i := 0
+	for k, v := range m {
+		p := ParamElem(k, v)
+		if i == 0 {
+			e = p.typ
+		} else if p.typ != e && e != NONE {
+			e = NONE
+		}
+		d.Add(p)
+		i++
+	}
+	return
+}
+
+func ParamList(l []any) (e DataType, d *data.Data) {
+	d = data.Make[*param](len(l))
+	for i, v := range l {
+		p := ParamElem(strconv.Itoa(i), v)
+		if i == 0 {
+			e = p.typ
+		} else if p.typ != e && e != NONE {
+			e = NONE
+		}
+		d.Add(p)
+	}
+	return
+}
+
+func ParamElem(k string, v any) (p *param) {
+	p = &param{key: k}
+	switch v := v.(type) {
+	case string:
+		p.typ = DataTypeOf(v)
+	case map[string]any:
+		p.typ = OBJECT
+		p.elm, p.els = ParamMap(v)
+	case []any:
+		p.typ = LIST
+		p.elm, p.els = ParamList(v)
+	}
+	return
 }
 
 func (p *param) Key() string {

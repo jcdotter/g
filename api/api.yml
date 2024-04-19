@@ -1,29 +1,29 @@
-- name: sampleapi
-  url: https://api.sampleapis.com/
-  header: 
-    content-type: application/json
-  resources:
-    - name: Colors
-      url: https://api.sampleapis.com/csscolornames/colors
-      methods:
-        - name: GET
-          response:
-            header: 
-              content-type: application/json
-            body:
-              - id: int
-                name: string
-                hex: string
-    - name: color
-      url: https://api.sampleapis.com/csscolornames/colors/:id
-      methods:
-        - name: GET
-          response:
-            header: 
-              content-type: application/json
-            body:
-              id: int
+name: sampleapi
+url: https://api.sampleapis.com
+header: 
+  content-type: application/json
+resources:
+  colors:
+    uri: /csscolornames/colors
+    methods:
+      - name: GET
+        response:
+          header: 
+            content-type: application/json
+          body:
+            - id: int
               name: string
               hex: string
+  color:
+    uri: /csscolornames/colors/:id
+    methods:
+      - name: GET
+        response:
+          header: 
+            content-type: application/json
+          body:
+            id: int
+            name: string
+            hex: string
 
 ```
