@@ -6,7 +6,7 @@ resources:
   colors:
     uri: /csscolornames/colors
     methods:
-      - name: GET
+      GET:
         response:
           header: 
             content-type: application/json
@@ -17,7 +17,7 @@ resources:
   color:
     uri: /csscolornames/colors/:id
     methods:
-      - name: GET
+      GET:
         response:
           header: 
             content-type: application/json

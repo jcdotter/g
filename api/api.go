@@ -154,14 +154,7 @@ type Api struct {
 	Auth      *Api
 	Url       string
 	Resources *data.Data
-
-	// the following are global elements
-	// that apply to all resources
-
-	Params   *data.Data // url params
-	Header   *data.Data // request header
-	Request  *data.Data // request body
-	Response *data.Data // response body
+	Header    *data.Data // request header
 }
 
 func New(protocol Protocol, url string) *Api {
@@ -169,10 +162,7 @@ func New(protocol Protocol, url string) *Api {
 		Protocol:  protocol,
 		Url:       url,
 		Resources: data.Make[*Resource](4),
-		Params:    data.Make[*param](4),
 		Header:    data.Make[*param](4),
-		Request:   data.Make[*param](4),
-		Response:  data.Make[*param](4),
 	}
 }
 
@@ -183,37 +173,14 @@ func FromYaml(yaml []byte) []*Api {
 func FromMap(m map[string]any) (api *Api) {
 	if url, ok := m["url"]; ok {
 		api = New(REST, url.(string))
-		for k, v := range m {
-			var d *data.Data
-			switch k {
-			case "params":
-				d = api.Params
-			case "header":
-				d = api.Header
-			case "request":
-				d = api.Request
-			case "response":
-				d = api.Response
-			}
-			if d != nil {
-				switch v := v.(type) {
-				case map[string]any:
-					_, p := ParamMap(v)
-					d.Add(p)
-				case []any:
-					_, p := ParamList(v)
-					d.Add(p)
-				}
+		if h, ok := m["header"]; ok {
+			for k, v := range h.(map[string]any) {
+				api.Header.Add(ParamElem(k, v))
 			}
 		}
-		// add resources
-		// range resources as []any
-		// need func that intakes a map[string]any
-		// and returns a *Resource
-		// add resource to api.Resources
 		if r, ok := m["resources"]; ok {
 			for k, v := range r.(map[string]any) {
-				api.Resources.Add(ResourceFromMap(k, v))
+				api.Resources.Add(ResourceMap(k, v.(map[string]any)))
 			}
 		}
 	}
@@ -241,9 +208,7 @@ type Resource struct {
 	Uri       string
 	Methods   *data.Data
 	Resources *data.Data
-	Params    *data.Data
 	Header    *data.Data
-	Data      *data.Data
 }
 
 func NewResource(name, uri string) *Resource {
@@ -252,34 +217,26 @@ func NewResource(name, uri string) *Resource {
 		Uri:       uri,
 		Methods:   data.Make[*Method](4),
 		Resources: data.Make[*Resource](4),
-		Params:    data.Make[*param](4),
 		Header:    data.Make[*param](4),
-		Data:      data.Make[*param](4),
 	}
 }
 
-func ResourceMap(k string, v map[string]any) (r *Resource) {
-	if uri, ok := v["uri"]; ok {
+func ResourceMap(k string, m map[string]any) (r *Resource) {
+	if uri, ok := m["uri"]; ok {
 		r = NewResource(k, uri.(string))
-		for k, v := range v {
-			var d *data.Data
-			switch k {
-			case "params":
-				d = r.Params
-			case "header":
-				d = r.Header
-			case "data":
-				d = r.Data
+		if h, ok := m["header"]; ok {
+			for k, v := range h.(map[string]any) {
+				r.Header.Add(ParamElem(k, v))
 			}
-			if d != nil {
-				switch v := v.(type) {
-				case map[string]any:
-					_, p := ParamMap(v)
-					d.Add(p)
-				case []any:
-					_, p := ParamList(v)
-					d.Add(p)
-				}
+		}
+		if rs, ok := m["resources"]; ok {
+			for k, v := range rs.(map[string]any) {
+				r.Resources.Add(ResourceMap(k, v.(map[string]any)))
+			}
+		}
+		if rs, ok := m["methods"]; ok {
+			for k, v := range rs.(map[string]any) {
+				r.Methods.Add(MethodMap(k, v.(map[string]any)))
 			}
 		}
 	}
@@ -308,10 +265,28 @@ func (r *Resource) Post()   {}
 func (r *Resource) Put()    {}
 func (r *Resource) Delete() {}
 
+// ----------------------------------------------------------------------------
+// API METHOD
+
 type Method struct {
 	Name     string
 	Request  *Request
 	Response *Response
+}
+
+func NewMethod(name string) *Method {
+	return &Method{
+		Name:     name,
+		Request:  &Request{},
+		Response: &Response{},
+	}
+}
+
+func MethodMap(k string, m map[string]any) (me *Method) {
+	me = NewMethod(k)
+	if r, ok := m["request"]; ok {
+
+	}
 }
 
 func (m *Method) Key() string {
