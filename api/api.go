@@ -152,17 +152,13 @@ func (d DataType) String() string {
 type Api struct {
 	Protocol  Protocol
 	Auth      *Api
-	Url       string
 	Resources *data.Data
-	Header    *data.Data // request header
 }
 
-func New(protocol Protocol, url string) *Api {
+func New() *Api {
 	return &Api{
-		Protocol:  protocol,
-		Url:       url,
+		Protocol:  REST,
 		Resources: data.Make[*Resource](4),
-		Header:    data.Make[*param](4),
 	}
 }
 
@@ -171,20 +167,34 @@ func FromYaml(yaml []byte) []*Api {
 }
 
 func FromMap(m map[string]any) (api *Api) {
-	if url, ok := m["url"]; ok {
-		api = New(REST, url.(string))
-		if h, ok := m["header"]; ok {
-			for k, v := range h.(map[string]any) {
-				api.Header.Add(ParamElem(k, v))
-			}
+	if u, ok := m["url"]; ok {
+		api = New()
+		if p, ok := m["auth"]; ok {
+			api.Auth = FromMap(p.(map[string]any))
 		}
 		if r, ok := m["resources"]; ok {
 			for k, v := range r.(map[string]any) {
-				api.Resources.Add(ResourceMap(k, v.(map[string]any)))
+				api.ResourceMap(k, v.(map[string]any), u.(string))
 			}
 		}
 	}
 	return
+}
+
+func (a *Api) ResourceMap(k string, m map[string]any, u string) {
+	if uri, ok := m["uri"]; ok {
+		r := NewResource(k, u+uri.(string))
+		a.Resources.Add(r)
+		if ms, ok := m["methods"]; ok {
+			for k, v := range ms.(map[string]any) {
+				r.MethodMap(k, v.(map[string]any))
+			}
+		}
+	}
+}
+
+func (a *Api) AddResource(r *Resource) {
+	a.Resources.Add(r)
 }
 
 func (a *Api) Resource(key string) *Resource {
@@ -192,68 +202,39 @@ func (a *Api) Resource(key string) *Resource {
 	if el := a.Resources.Get(key); el == nil {
 		return nil
 	}
-	r := el.(*Resource)
-	return &Resource{
-		Uri:       key,
-		Methods:   r.Methods,
-		Resources: r.Resources,
-	}
+	return el.(*Resource)
 }
 
 // ----------------------------------------------------------------------------
 // API RESOURCE
 
 type Resource struct {
-	Name      string
-	Uri       string
-	Methods   *data.Data
-	Resources *data.Data
-	Header    *data.Data
+	Name    string
+	Url     string
+	Methods *data.Data
 }
 
-func NewResource(name, uri string) *Resource {
+func NewResource(name, url string) *Resource {
 	return &Resource{
-		Name:      name,
-		Uri:       uri,
-		Methods:   data.Make[*Method](4),
-		Resources: data.Make[*Resource](4),
-		Header:    data.Make[*param](4),
+		Name:    name,
+		Url:     url,
+		Methods: data.Make[*Method](4),
 	}
 }
 
-func ResourceMap(k string, m map[string]any) (r *Resource) {
-	if uri, ok := m["uri"]; ok {
-		r = NewResource(k, uri.(string))
-		if h, ok := m["header"]; ok {
-			for k, v := range h.(map[string]any) {
-				r.Header.Add(ParamElem(k, v))
-			}
-		}
-		if rs, ok := m["resources"]; ok {
-			for k, v := range rs.(map[string]any) {
-				r.Resources.Add(ResourceMap(k, v.(map[string]any)))
-			}
-		}
-		if rs, ok := m["methods"]; ok {
-			for k, v := range rs.(map[string]any) {
-				r.Methods.Add(MethodMap(k, v.(map[string]any)))
-			}
-		}
+func (r *Resource) MethodMap(k string, m map[string]any) {
+	me := NewMethod(k)
+	if r, ok := m["request"]; ok {
+		me.Request = RequestMap(r.(map[string]any))
 	}
-	return
+	if r, ok := m["response"]; ok {
+		me.Response = ResponseMap(r.(map[string]any))
+	}
+	r.Methods.Add(me)
 }
 
 func (r *Resource) Key() string {
 	return r.Name
-}
-
-func (r *Resource) Resource(id, name string) *Resource {
-	s := r.Resources.Get(name).(*Resource)
-	return &Resource{
-		Uri:       id + "/" + name,
-		Methods:   s.Methods,
-		Resources: s.Resources,
-	}
 }
 
 func (r *Resource) Method(key string) *Method {
@@ -282,28 +263,73 @@ func NewMethod(name string) *Method {
 	}
 }
 
-func MethodMap(k string, m map[string]any) (me *Method) {
-	me = NewMethod(k)
-	if r, ok := m["request"]; ok {
-
-	}
-}
-
 func (m *Method) Key() string {
 	return m.Name
 }
 
 type Request struct {
-	Path   *data.Data
 	Params *data.Data
 	Header *data.Data
-	Body   any
+	Body   *data.Data
 	// add webhooks
+}
+
+func NewRequest() *Request {
+	return &Request{
+		Params: data.Make[*param](4),
+		Header: data.Make[*param](4),
+		Body:   data.Make[*param](4),
+	}
+}
+
+func RequestMap(m map[string]any) *Request {
+	r := NewRequest()
+	for k, v := range m {
+		switch k {
+		case "params":
+			for k, v := range v.(map[string]any) {
+				r.Params.Add(ParamElem(k, v))
+			}
+		case "header":
+			for k, v := range v.(map[string]any) {
+				r.Header.Add(ParamElem(k, v))
+			}
+		case "body":
+			for k, v := range v.(map[string]any) {
+				r.Body.Add(ParamElem(k, v))
+			}
+		}
+	}
+	return r
 }
 
 type Response struct {
 	Header *data.Data
-	Body   any
+	Body   *data.Data
+}
+
+func NewResponse() *Response {
+	return &Response{
+		Header: data.Make[*param](4),
+		Body:   data.Make[*param](4),
+	}
+}
+
+func ResponseMap(m map[string]any) *Response {
+	r := NewResponse()
+	for k, v := range m {
+		switch k {
+		case "header":
+			for k, v := range v.(map[string]any) {
+				r.Header.Add(ParamElem(k, v))
+			}
+		case "body":
+			for k, v := range v.(map[string]any) {
+				r.Body.Add(ParamElem(k, v))
+			}
+		}
+	}
+	return r
 }
 
 // ----------------------------------------------------------------------------

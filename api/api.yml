@@ -1,7 +1,5 @@
 name: sampleapi
 url: https://api.sampleapis.com
-header: 
-  content-type: application/json
 resources:
   colors:
     uri: /csscolornames/colors
