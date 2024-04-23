@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/jcdotter/go/data"
+	"github.com/jcdotter/go/encoder"
 )
 
 // ----------------------------------------------------------------------------
@@ -118,11 +119,12 @@ const (
 	STRING
 	LIST
 	OBJECT
+	ANY
 )
 
 var (
-	dataTypeString = "noneboolintfloatstringlistobject"
-	dataTypeIndex  = []int{0, 4, 8, 11, 16, 22, 26, 32}
+	dataTypeString = "noneboolintfloatstringlistobjectany"
+	dataTypeIndex  = []int{0, 4, 8, 11, 16, 22, 26, 32, 35}
 	dataType       = map[string]DataType{
 		"none":   NONE,
 		"bool":   BOOL,
@@ -131,6 +133,7 @@ var (
 		"string": STRING,
 		"list":   LIST,
 		"object": OBJECT,
+		"any":    ANY,
 	}
 )
 
@@ -147,7 +150,7 @@ func (d DataType) String() string {
 
 // ----------------------------------------------------------------------------
 // API
-// api.endpoint.method.request
+// api.resource.method.request
 
 type Api struct {
 	Protocol  Protocol
@@ -162,8 +165,8 @@ func New() *Api {
 	}
 }
 
-func FromYaml(yaml []byte) []*Api {
-	return nil
+func FromYaml(yaml []byte) *Api {
+	return FromMap(encoder.Yaml.Decode(yaml).Map())
 }
 
 func FromMap(m map[string]any) (api *Api) {
@@ -193,13 +196,9 @@ func (a *Api) ResourceMap(k string, m map[string]any, u string) {
 	}
 }
 
-func (a *Api) AddResource(r *Resource) {
-	a.Resources.Add(r)
-}
-
 func (a *Api) Resource(key string) *Resource {
 	var el any
-	if el := a.Resources.Get(key); el == nil {
+	if el = a.Resources.Get(key); el == nil {
 		return nil
 	}
 	return el.(*Resource)
@@ -238,7 +237,11 @@ func (r *Resource) Key() string {
 }
 
 func (r *Resource) Method(key string) *Method {
-	return r.Methods.Get(key).(*Method)
+	var el any
+	if el = r.Methods.Get(key); el == nil {
+		return nil
+	}
+	return el.(*Method)
 }
 
 func (r *Resource) Get()    {}
@@ -267,36 +270,39 @@ func (m *Method) Key() string {
 	return m.Name
 }
 
+func (m *Method) Call() {
+	// use http client to build and make request
+}
+
 type Request struct {
-	Params *data.Data
-	Header *data.Data
-	Body   *data.Data
-	// add webhooks
+	Params Params
+	Header Params
+	Body   Params
+	// TODO: add webhooks
 }
 
 func NewRequest() *Request {
 	return &Request{
-		Params: data.Make[*param](4),
-		Header: data.Make[*param](4),
-		Body:   data.Make[*param](4),
+		Params: Params{data.Make[*Param](4)},
+		Header: Params{data.Make[*Param](4)},
+		Body:   Params{data.Make[*Param](4)},
 	}
 }
 
 func RequestMap(m map[string]any) *Request {
-	r := NewRequest()
+	r := &Request{}
 	for k, v := range m {
 		switch k {
 		case "params":
-			for k, v := range v.(map[string]any) {
-				r.Params.Add(ParamElem(k, v))
-			}
+			_, r.Params = ParamMap(v.(map[string]any))
 		case "header":
-			for k, v := range v.(map[string]any) {
-				r.Header.Add(ParamElem(k, v))
-			}
+			_, r.Header = ParamMap(v.(map[string]any))
 		case "body":
-			for k, v := range v.(map[string]any) {
-				r.Body.Add(ParamElem(k, v))
+			switch v := v.(type) {
+			case map[string]any:
+				_, r.Body = ParamMap(v)
+			case []any:
+				_, r.Body = ParamList(v)
 			}
 		}
 	}
@@ -304,28 +310,29 @@ func RequestMap(m map[string]any) *Request {
 }
 
 type Response struct {
-	Header *data.Data
-	Body   *data.Data
+	Header Params
+	Body   Params
 }
 
 func NewResponse() *Response {
 	return &Response{
-		Header: data.Make[*param](4),
-		Body:   data.Make[*param](4),
+		Header: Params{data.Make[*Param](4)},
+		Body:   Params{data.Make[*Param](4)},
 	}
 }
 
 func ResponseMap(m map[string]any) *Response {
-	r := NewResponse()
+	r := &Response{}
 	for k, v := range m {
 		switch k {
 		case "header":
-			for k, v := range v.(map[string]any) {
-				r.Header.Add(ParamElem(k, v))
-			}
+			_, r.Header = ParamMap(v.(map[string]any))
 		case "body":
-			for k, v := range v.(map[string]any) {
-				r.Body.Add(ParamElem(k, v))
+			switch v := v.(type) {
+			case map[string]any:
+				_, r.Body = ParamMap(v)
+			case []any:
+				_, r.Body = ParamList(v)
 			}
 		}
 	}
@@ -335,10 +342,34 @@ func ResponseMap(m map[string]any) *Response {
 // ----------------------------------------------------------------------------
 // PARAM
 
+type Params struct {
+	*data.Data
+}
+
+func (p Params) Get(key string) *Param {
+	var el any
+	if el = p.Data.Get(key); el == nil {
+		return nil
+	}
+	return el.(*Param)
+}
+
+func (p Params) Index(i int) *Param {
+	var el any
+	if el = p.Data.Index(i); el == nil {
+		return nil
+	}
+	return el.(*Param)
+}
+
+func (p Params) IsNil() bool {
+	return p.Data == nil
+}
+
 // Param is an element of an object or list
 // which may be found in the url, header, or
 // body of a request or response
-type param struct {
+type Param struct {
 	// if the param belongs to an object
 	// the key will be the field name,
 	// otherwise the param belongs to a list
@@ -346,7 +377,7 @@ type param struct {
 	key string
 	// the datatype of the param
 	typ DataType
-	// if the param is an object or aclist with
+	// if the param is an object or a list with
 	// a single datatype and variable length,
 	// the elm will be the datatype of the
 	// elements in the object or list
@@ -354,27 +385,21 @@ type param struct {
 	// if the param is an object or a list
 	// the els will be the data elements
 	// in the object or list
-	els *data.Data
+	els Params
+	// if the param is a bool, int, float or string
+	// the val will be the value of the param
+	val any
 }
 
-func Param(key string, typ, elem *param) *param {
-	return &param{
-		key: key,
-		/* typ: typ,
-		elm: elem,
-		els: data.Make[any](), */
-	}
-}
-
-func ParamMap(m map[string]any) (e DataType, d *data.Data) {
-	d = data.Make[*param](len(m))
+func ParamMap(m map[string]any) (e DataType, d Params) {
+	d = Params{data.Make[*Param](len(m))}
 	i := 0
 	for k, v := range m {
 		p := ParamElem(k, v)
 		if i == 0 {
 			e = p.typ
-		} else if p.typ != e && e != NONE {
-			e = NONE
+		} else if p.typ != e && e != ANY {
+			e = ANY
 		}
 		d.Add(p)
 		i++
@@ -382,25 +407,37 @@ func ParamMap(m map[string]any) (e DataType, d *data.Data) {
 	return
 }
 
-func ParamList(l []any) (e DataType, d *data.Data) {
-	d = data.Make[*param](len(l))
+func ParamList(l []any) (e DataType, d Params) {
+	d = Params{data.Make[*Param](len(l))}
 	for i, v := range l {
 		p := ParamElem(strconv.Itoa(i), v)
 		if i == 0 {
 			e = p.typ
-		} else if p.typ != e && e != NONE {
-			e = NONE
+		} else if p.typ != e && e != ANY {
+			e = ANY
 		}
 		d.Add(p)
 	}
 	return
 }
 
-func ParamElem(k string, v any) (p *param) {
-	p = &param{key: k}
+func ParamElem(k string, v any) (p *Param) {
+	p = &Param{key: k}
 	switch v := v.(type) {
+	case bool:
+		p.typ = BOOL
+		p.val = v
+	case int:
+		p.typ = INT
+		p.val = v
+	case float64:
+		p.typ = FLOAT
+		p.val = v
 	case string:
-		p.typ = DataTypeOf(v)
+		if p.typ = DataTypeOf(v); p.typ == NONE {
+			p.typ = STRING
+			p.val = v
+		}
 	case map[string]any:
 		p.typ = OBJECT
 		p.elm, p.els = ParamMap(v)
@@ -411,6 +448,30 @@ func ParamElem(k string, v any) (p *param) {
 	return
 }
 
-func (p *param) Key() string {
+func (p *Param) Key() string {
 	return p.key
+}
+
+func (p *Param) Type() DataType {
+	return p.typ
+}
+
+func (p *Param) ElemType() DataType {
+	return p.elm
+}
+
+func (p *Param) Val() any {
+	return p.val
+}
+
+func (p *Param) Elem(key string) *Param {
+	return p.els.Get(key)
+}
+
+func (p *Param) Index(i int) *Param {
+	return p.els.Index(i)
+}
+
+func (p *Param) Elems() Params {
+	return p.els
 }

@@ -23,5 +23,3 @@ resources:
             id: int
             name: string
             hex: string
-
-```
