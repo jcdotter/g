@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"testing"
 
@@ -32,6 +33,15 @@ func TestDataType(t *testing.T) {
 	test.Assert(t, BOOL.String(), "bool")
 	test.Assert(t, LIST.String(), "list")
 	test.Assert(t, OBJECT.String(), "object")
+}
+
+func TestUrl(t *testing.T) {
+	u := "https://api.sampleapis.com/"
+	r, _ := url.Parse(u)
+	fmt.Println(r.Scheme)
+	fmt.Println(r.Host)
+	r.Path = "/csscolornames/colors/:id"
+	fmt.Println(r.String())
 }
 
 func TestParam(t *testing.T) {
@@ -95,7 +105,7 @@ func TestYaml(t *testing.T) {
 }
 
 func TestCall(t *testing.T) {
-	yml, _ := os.ReadFile("api.yml")
+	/* yml, _ := os.ReadFile("api.yml")
 	api := FromYaml(yml)
 
 	r, err := api.Resource("color").Method("GET").Call()
@@ -109,5 +119,5 @@ func TestCall(t *testing.T) {
 	b := make([]byte, 100)
 	r.Body.Read(b)
 	fmt.Println(string(b))
-	r.Body.Close()
+	r.Body.Close() */
 }

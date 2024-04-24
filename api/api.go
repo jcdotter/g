@@ -1,6 +1,8 @@
 package api
 
 import (
+	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/jcdotter/go/data"
@@ -171,22 +173,25 @@ func FromYaml(yaml []byte) *Api {
 
 func FromMap(m map[string]any) (api *Api) {
 	if u, ok := m["url"]; ok {
-		api = New()
-		if p, ok := m["auth"]; ok {
-			api.Auth = FromMap(p.(map[string]any))
-		}
-		if r, ok := m["resources"]; ok {
-			for k, v := range r.(map[string]any) {
-				api.ResourceMap(k, v.(map[string]any), u.(string))
+		if url, e := url.Parse(u.(string)); e == nil {
+			api = New()
+			if p, ok := m["auth"]; ok {
+				api.Auth = FromMap(p.(map[string]any))
+			}
+			if r, ok := m["resources"]; ok {
+				for k, v := range r.(map[string]any) {
+					api.ResourceMap(k, v.(map[string]any), url)
+				}
 			}
 		}
 	}
 	return
 }
 
-func (a *Api) ResourceMap(k string, m map[string]any, u string) {
+func (a *Api) ResourceMap(k string, m map[string]any, u *url.URL) {
 	if uri, ok := m["uri"]; ok {
-		r := NewResource(k, u+uri.(string))
+		u.Path = uri.(string)
+		r := NewResource(k, u)
 		a.Resources.Add(r)
 		if ms, ok := m["methods"]; ok {
 			for k, v := range ms.(map[string]any) {
@@ -209,11 +214,11 @@ func (a *Api) Resource(key string) *Resource {
 
 type Resource struct {
 	Name    string
-	Url     string
+	Url     *url.URL
 	Methods *data.Data
 }
 
-func NewResource(name, url string) *Resource {
+func NewResource(name string, url *url.URL) *Resource {
 	return &Resource{
 		Name:    name,
 		Url:     url,
@@ -254,6 +259,7 @@ func (r *Resource) Delete() {}
 
 type Method struct {
 	Name     string
+	Req      *http.Request
 	Request  *Request
 	Response *Response
 }
@@ -272,6 +278,15 @@ func (m *Method) Key() string {
 
 func (m *Method) Call() {
 	// use http client to build and make request
+}
+
+func ReqMap(url *url.URL, method string, m map[string]any) *http.Request {
+	r := &http.Request{
+		URL:    url,
+		Method: method,
+	}
+
+	return r
 }
 
 type Request struct {
