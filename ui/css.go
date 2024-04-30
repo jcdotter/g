@@ -100,6 +100,14 @@ func (c *Class) Key() string {
 	return c.Sel
 }
 
+func (c *Class) Val() any {
+	return c.Block
+}
+
+func (c *Class) String() string {
+	return c.Block
+}
+
 // -----------------------------------------------------------------------------
 // CLASS DECLARATIONS
 

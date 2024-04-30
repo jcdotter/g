@@ -1,10 +1,11 @@
 package api
 
 import (
-	"net/http"
+	"io"
 	"net/url"
 	"strconv"
 
+	"github.com/jcdotter/go/buffer"
 	"github.com/jcdotter/go/data"
 	"github.com/jcdotter/go/encoder"
 )
@@ -191,7 +192,7 @@ func FromMap(m map[string]any) (api *Api) {
 func (a *Api) ResourceMap(k string, m map[string]any, u *url.URL) {
 	if uri, ok := m["uri"]; ok {
 		u.Path = uri.(string)
-		r := NewResource(k, u)
+		r := NewResource(a, k, u)
 		a.Resources.Add(r)
 		if ms, ok := m["methods"]; ok {
 			for k, v := range ms.(map[string]any) {
@@ -213,13 +214,15 @@ func (a *Api) Resource(key string) *Resource {
 // API RESOURCE
 
 type Resource struct {
+	Api     *Api
 	Name    string
 	Url     *url.URL
 	Methods *data.Data
 }
 
-func NewResource(name string, url *url.URL) *Resource {
+func NewResource(api *Api, name string, url *url.URL) *Resource {
 	return &Resource{
+		Api:     api,
 		Name:    name,
 		Url:     url,
 		Methods: data.Make[*Method](4),
@@ -227,7 +230,7 @@ func NewResource(name string, url *url.URL) *Resource {
 }
 
 func (r *Resource) MethodMap(k string, m map[string]any) {
-	me := NewMethod(k)
+	me := NewMethod(r, k)
 	if r, ok := m["request"]; ok {
 		me.Request = RequestMap(r.(map[string]any))
 	}
@@ -258,13 +261,13 @@ func (r *Resource) Delete() {}
 // API METHOD
 
 type Method struct {
+	Resource *Resource
 	Name     string
-	Req      *http.Request
 	Request  *Request
 	Response *Response
 }
 
-func NewMethod(name string) *Method {
+func NewMethod(resource *Resource, name string) *Method {
 	return &Method{
 		Name:     name,
 		Request:  &Request{},
@@ -278,15 +281,9 @@ func (m *Method) Key() string {
 
 func (m *Method) Call() {
 	// use http client to build and make request
-}
+	/* c := &http.Client{}
+	r, _ := http.NewRequest(m.Name, m.Resource.Url.String(), nil) */
 
-func ReqMap(url *url.URL, method string, m map[string]any) *http.Request {
-	r := &http.Request{
-		URL:    url,
-		Method: method,
-	}
-
-	return r
 }
 
 type Request struct {
@@ -322,6 +319,11 @@ func RequestMap(m map[string]any) *Request {
 		}
 	}
 	return r
+}
+
+func (r *Request) Reader() io.Reader {
+	//b :=
+	return nil
 }
 
 type Response struct {
@@ -379,6 +381,14 @@ func (p Params) Index(i int) *Param {
 
 func (p Params) IsNil() bool {
 	return p.Data == nil
+}
+
+func (p *Params) Set(k string, v any) *Params {
+	if p.Data == nil {
+		p.Data = data.Make[*Param](4)
+	}
+	p.Add(ParamElem(k, v))
+	return p
 }
 
 // Param is an element of an object or list
@@ -475,10 +485,6 @@ func (p *Param) ElemType() DataType {
 	return p.elm
 }
 
-func (p *Param) Val() any {
-	return p.val
-}
-
 func (p *Param) Elem(key string) *Param {
 	return p.els.Get(key)
 }
@@ -489,4 +495,114 @@ func (p *Param) Index(i int) *Param {
 
 func (p *Param) Elems() Params {
 	return p.els
+}
+
+func (p *Param) Len() int {
+	return p.els.Len()
+}
+
+func (p *Param) Val() any {
+	return p.val
+}
+
+func (p *Param) Set(a any) bool {
+	switch a := a.(type) {
+	case bool:
+		if p.typ == BOOL {
+			p.val = a
+			return true
+		}
+	case int:
+		if p.typ == INT {
+			p.val = a
+			return true
+		}
+	case float64:
+		if p.typ == FLOAT {
+			p.val = a
+			return true
+		}
+	case string:
+		if p.typ == STRING {
+			p.val = a
+			return true
+		}
+	case map[string]any:
+		if p.typ == OBJECT {
+			if e, d := ParamMap(a); e == p.elm {
+				p.els = d
+				return true
+			}
+		}
+	case []any:
+		if p.typ == LIST {
+			if e, d := ParamList(a); e == p.elm {
+				p.els = d
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (p *Params) Json(list ...bool) []byte {
+	if p == nil || p.Len() == 0 {
+		return nil
+	}
+	if p.Len() == 1 && p.Index(0).Type() == LIST {
+		return p.Index(0).Json()
+	}
+	b := buffer.New()
+	if len(list) > 0 && list[0] {
+		for i := 0; i < p.Len(); i++ {
+			if v := p.Index(i).Json(); v != nil {
+				if i > 0 {
+					b.WriteByte(',')
+				}
+				b.Write(v)
+			}
+		}
+		if b.Len() == 0 {
+			return nil
+		}
+		b.PrependByte('[')
+		b.WriteByte(']')
+		return b.Bytes()
+	}
+	b.WriteByte('{')
+	for i := 0; i < p.Len(); i++ {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		v := p.Index(i)
+		b.WriteString(strconv.Quote(v.Key()))
+		b.WriteByte(',')
+		b.Write(v.Json())
+	}
+	b.WriteByte('}')
+	return b.Bytes()
+
+}
+
+func (p *Param) Json() []byte {
+	switch p.typ {
+	case OBJECT:
+		return p.els.Json()
+	case LIST:
+		return p.els.Json(true)
+	default:
+		if p.val != nil {
+			switch p.typ {
+			case BOOL:
+				return []byte(strconv.FormatBool(p.val.(bool)))
+			case INT:
+				return []byte(strconv.FormatInt(p.val.(int64), 10))
+			case FLOAT:
+				return []byte(strconv.FormatFloat(p.val.(float64), 'f', -1, 64))
+			case STRING:
+				return []byte(strconv.Quote(p.val.(string)))
+			}
+		}
+	}
+	return nil
 }

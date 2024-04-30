@@ -37,6 +37,9 @@ func (e *Entity) Key() string {
 	return e.name
 }
 
+func (e *Entity) Val() any       { return nil }
+func (e *Entity) String() string { return e.name }
+
 func (e *Entities) Len() int {
 	return len(*e)
 }
@@ -109,6 +112,26 @@ func TestData(t *testing.T) {
 	gt.Equal(3, s.Data.Len(), "Add(nil).Len()")
 	gt.Equal(nil, s.Data.Index(2), "Add(nil).Index()")
 	gt.Equal(nil, s.Data.Get("entity4"), "Add(nil).Get()")
+
+}
+
+func TestJson(t *testing.T) {
+	gt := test.New(t, config)
+	gt.Msg = "Data.%s"
+
+	d := Make[*Entity](4)
+	d.Add(&Entity{name: "entity1"})
+	d.Add(&Entity{name: "entity2"})
+	d.Add(&Entity{name: "entity3"})
+
+	data := d.Json()
+	gt.NotNil(data, "MarshalJSON()")
+	gt.Equal(`{"entity1":"entity1","entity2":"entity2","entity3":"entity3"}`, string(data), "Json()")
+
+	d.AsSlice()
+	data = d.Json()
+	gt.True(d.IsSlice(), "IsSlice()")
+	gt.Equal(`["entity1","entity2","entity3"]`, string(data), "AsSlice().Json()")
 
 }
 

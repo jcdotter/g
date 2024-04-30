@@ -70,6 +70,7 @@ func TestParam(t *testing.T) {
 	test.Assert(t, e.Type(), STRING, "expected param type STRING got %v", e.Type())
 	test.Assert(t, e.ElemType(), NONE, "expected param elem type of NONE, got %v", e.ElemType())
 	test.Assert(t, e.Elems().IsNil(), true, "expected param elems is nil, got %v", e.Elems().IsNil())
+	test.Assert(t, e.Val(), "application/json", "expected param value 'application/json', got '%v'", e.Val())
 
 	e = d.Get("body")
 	test.Assert(t, e.Key(), "body", "expected param key 'body' got '%v'", e.Key())
@@ -88,6 +89,9 @@ func TestParam(t *testing.T) {
 
 	x = e.Elems().Get("hex")
 	test.Assert(t, x.Type(), STRING, "expected param type STRING got %v", x.Type())
+
+	e.Elems().Get("id").Set(1)
+	test.Assert(t, e.Elems().Get("id").Val(), 1, "expected param value 1, got %v", e.Elems().Get("id").Val())
 }
 
 func TestYaml(t *testing.T) {

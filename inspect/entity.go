@@ -110,6 +110,9 @@ func (p *Package) Key() string {
 	return p.Name
 }
 
+func (p *Package) Val() any       { return nil }
+func (p *Package) String() string { return p.Name }
+
 func (p *Package) NumEntities() (n int) {
 	for _, f := range p.Files.List() {
 		if f.(*File).i.Len() > 0 {
@@ -140,6 +143,9 @@ func (f *File) Key() string {
 	return f.n
 }
 
+func (f *File) Val() any       { return nil }
+func (f *File) String() string { return f.n }
+
 // Name returns the file name.
 func (f *File) Name() string {
 	return f.n
@@ -162,6 +168,9 @@ type Import struct {
 func (i *Import) Key() string {
 	return i.name
 }
+
+func (i *Import) Val() any       { return nil }
+func (i *Import) String() string { return i.name }
 
 // Name returns the import name.
 func (i *Import) Name() string {
@@ -192,6 +201,9 @@ type Value struct {
 func (v *Value) Key() string {
 	return v.name
 }
+
+func (v *Value) Val() any       { return nil }
+func (v *Value) String() string { return v.name }
 
 // Name returns the value name.
 func (v *Value) Name() string {
@@ -232,6 +244,9 @@ func NewTypeLit(file *File, expr ast.Expr) *Type {
 func (t *Type) Key() string {
 	return t.name
 }
+
+func (t *Type) Val() any       { return nil }
+func (t *Type) String() string { return t.name }
 
 // Name returns the type name.
 func (t *Type) Name() string {
@@ -291,6 +306,9 @@ func (f *Func) Key() string {
 	}
 	return f.name
 }
+
+func (f *Func) Val() any       { return nil }
+func (f *Func) String() string { return f.name }
 
 // Name returns the function name.
 func (f *Func) Name() string {

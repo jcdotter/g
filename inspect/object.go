@@ -160,6 +160,9 @@ func (f *Field) Key() string {
 	return f.name
 }
 
+func (f *Field) Val() any       { return nil }
+func (f *Field) String() string { return f.name }
+
 func (f *Field) Type() *Type {
 	return f.typ
 }

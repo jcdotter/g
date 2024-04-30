@@ -201,8 +201,14 @@ func (b *Buffer) ReadFrom(r io.Reader) (int64, error) {
 
 // Prepend prepends the given bytes to the Buffer's byte slice.
 func (b *Buffer) Prepend(bytes []byte) (int, error) {
-	b.b = append(bytes, b.b...)
+	b.b = append(append(make([]byte, 0, len(bytes)+b.Cap()), bytes...), b.b...)
 	return len(bytes), nil
+}
+
+// PrependByte prepends the given byte to the Buffer's byte slice.
+func (b *Buffer) PrependByte(n byte) (int, error) {
+	b.b = append(append(make([]byte, 0, b.Cap()), n), b.b...)
+	return 1, nil
 }
 
 // PrependRune prepends the given rune to the Buffer's byte slice.
@@ -214,9 +220,8 @@ func (b *Buffer) PrependRune(r rune) (int, error) {
 
 // PrependString prepends the given string to the Buffer's byte slice.
 func (b *Buffer) PrependString(s string) (int, error) {
-	bytes := []byte(s)
-	b.b = append(bytes, b.b...)
-	return len(bytes), nil
+	b.b = append(append(make([]byte, 0, len(s)+b.Cap()), s...), b.b...)
+	return len(s), nil
 }
 
 // Insert inserts the given bytes at the given index in the Buffer's byte slice.
@@ -467,6 +472,11 @@ func (b *Buffer) String() string {
 // Len returns the length of the Buffer's byte slice.
 func (b *Buffer) Len() int {
 	return len(b.b)
+}
+
+// Cap returns the capacity of the Buffer's byte slice.
+func (b *Buffer) Cap() int {
+	return cap(b.b)
 }
 
 // Get returns the byte at the given index in the Buffer's byte slice.

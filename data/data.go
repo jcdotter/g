@@ -16,9 +16,11 @@ package data
 
 import (
 	"sort"
+	"strconv"
 	"sync"
 	"unsafe"
 
+	"github.com/jcdotter/go/buffer"
 	"github.com/jcdotter/go/typ"
 )
 
@@ -41,13 +43,16 @@ var (
 type Data struct {
 	sync.Mutex
 	k string         // data block identifier
-	t uintptr        // data type
+	t uintptr        // data elem type
 	i map[string]int // data index
 	l []Elem         // data list
+	s bool           // data is slice
 }
 
 type Elem interface {
 	Key() string
+	Val() any
+	String() string
 }
 
 func Make[T Elem](cap int) (d *Data) {
@@ -71,6 +76,15 @@ func Of(elems ...Elem) (d *Data) {
 		}
 	}
 	return
+}
+
+func (d *Data) AsSlice() *Data {
+	d.s = true
+	return d
+}
+
+func (d *Data) IsSlice() bool {
+	return d.s
 }
 
 func (d *Data) Key() string {
@@ -250,4 +264,60 @@ func (d *Data) SortByKeys() *Data {
 		})
 	}
 	return d
+}
+
+func (d *Data) Json() []byte {
+	if d == nil {
+		return nil
+	}
+	if d.s {
+		return d.jsonSlice()
+	}
+	return d.jsonMap()
+}
+
+func (d *Data) jsonSlice() []byte {
+	if d.Len() == 0 {
+		return nil
+	}
+	b := buffer.Pool.Get()
+	defer b.Free()
+	for i, v := range d.l {
+		if s := v.String(); s != "" {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(strconv.Quote(s))
+		}
+	}
+	if b.Len() == 0 {
+		return nil
+	}
+	b.PrependByte('[')
+	b.WriteByte(']')
+	return b.Bytes()
+}
+
+func (d *Data) jsonMap() []byte {
+	if d.Len() == 0 {
+		return nil
+	}
+	b := buffer.Pool.Get()
+	defer b.Free()
+	for i, v := range d.l {
+		if s := v.String(); s != "" {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(strconv.Quote(v.Key()))
+			b.WriteByte(':')
+			b.WriteString(strconv.Quote(s))
+		}
+	}
+	if b.Len() == 0 {
+		return nil
+	}
+	b.PrependByte('{')
+	b.WriteByte('}')
+	return b.Bytes()
 }
